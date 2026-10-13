@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas LMS MCP Server</title>
+<meta name="description" content="A self-hosted MCP server that gives your AI assistant full student access to Canvas LMS: 209 tools, OAuth-protected, works on every device.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fbfaf8; --surface:#ffffff; --surface-2:#f3f1ec; --text:#1c1b19; --muted:#6b675f;
+  --border:#e6e2d9; --accent:#e4572e; --accent-2:#f29e4c; --accent-soft:#fdebe4;
+  --code-bg:#1d1c1a; --code-text:#f1ede4; --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121110; --surface:#1b1a18; --surface-2:#23211e; --text:#f1ede4; --muted:#a29d93;
+    --border:#2f2c28; --accent:#ff6b42; --accent-2:#ffb366; --accent-soft:#2c1c16;
+    --code-bg:#0b0a09; --code-text:#f1ede4; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121110; --surface:#1b1a18; --surface-2:#23211e; --text:#f1ede4; --muted:#a29d93;
+  --border:#2f2c28; --accent:#ff6b42; --accent-2:#ffb366; --accent-soft:#2c1c16;
+  --code-bg:#0b0a09; --code-text:#f1ede4; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 Inter,system-ui,-apple-system,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+code,pre{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+code{background:var(--surface-2);border:1px solid var(--border);padding:.1em .4em;border-radius:6px;font-size:.88em}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+
+nav{position:sticky;top:0;z-index:10;backdrop-filter:saturate(1.4) blur(12px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--border)}
+nav .wrap{display:flex;align-items:center;gap:20px;height:60px}
+.brand{font-weight:800;color:var(--text);display:flex;gap:8px;align-items:center;letter-spacing:-.01em}
+.brand:hover{text-decoration:none}
+nav .links{margin-left:auto;display:flex;gap:18px;align-items:center}
+nav .links a{color:var(--muted);font-size:.93rem;font-weight:500}
+nav .links a:hover{color:var(--text);text-decoration:none}
+.theme{background:none;border:1px solid var(--border);color:var(--text);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:15px}
+.brand,nav .links a{white-space:nowrap}
+@media (max-width:720px){nav .links a.hide-sm{display:none}nav .links{gap:14px}}
+
+.hero{padding:88px 0 64px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-40% -10% auto;height:520px;background:radial-gradient(closest-side,var(--accent-soft),transparent);z-index:-1}
+.pill{display:inline-flex;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:6px 14px;font-size:.85rem;color:var(--muted);box-shadow:var(--shadow)}
+.pill b{color:var(--accent)}
+h1{font-size:clamp(2.3rem,6vw,4rem);line-height:1.05;letter-spacing:-.035em;margin:22px 0 18px;font-weight:800}
+h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{font-size:1.18rem;color:var(--muted);max-width:640px;margin:0 auto 32px}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:10px;font-weight:600;border:1px solid var(--border);color:var(--text);background:var(--surface)}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.stats{display:flex;justify-content:center;gap:44px;margin-top:52px;flex-wrap:wrap}
+.stat b{display:block;font-size:2rem;font-weight:800;letter-spacing:-.02em}
+.stat span{color:var(--muted);font-size:.9rem}
+
+section{padding:72px 0;border-top:1px solid var(--border)}
+.eyebrow{color:var(--accent);font-weight:700;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
+h2{font-size:clamp(1.7rem,3.5vw,2.3rem);letter-spacing:-.025em;margin:8px 0 12px;line-height:1.15}
+.sub{color:var(--muted);max-width:620px;margin:0 0 36px}
+
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;box-shadow:var(--shadow)}
+.card .ic{font-size:1.5rem;width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:var(--accent-soft);margin-bottom:12px}
+.card h3{margin:0 0 6px;font-size:1.05rem}
+.card p{margin:0;color:var(--muted);font-size:.94rem}
+
+.flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.node{flex:1 1 160px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;box-shadow:var(--shadow)}
+.node b{display:block;margin-bottom:2px}
+.node small{color:var(--muted)}
+.arrow{align-self:center;color:var(--accent);font-weight:800;font-size:1.3rem}
+@media (max-width:720px){.arrow{transform:rotate(90deg);width:100%;text-align:center}}
+
+.steps{counter-reset:s;display:grid;gap:14px}
+.step{display:grid;grid-template-columns:42px 1fr;gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px}
+.step::before{counter-increment:s;content:counter(s);width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--accent);color:#fff}
+.step h3{margin:6px 0 6px;font-size:1.05rem}
+.step p{margin:0 0 10px;color:var(--muted)}
+.step > div{min-width:0}
+pre{position:relative;background:var(--code-bg);color:var(--code-text);padding:16px 18px;border-radius:10px;overflow-x:auto;font-size:.86rem;line-height:1.6;margin:8px 0 0}
+.copy{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.08);color:var(--code-text);border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:.75rem;padding:3px 9px;cursor:pointer}
+
+.tbl{overflow-x:auto;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--surface-2);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+
+.tools{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.tool{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.tool .top{display:flex;justify-content:space-between;align-items:baseline}
+.tool b{font-size:1rem}
+.tool .cnt{font-weight:800;color:var(--accent);font-size:1.3rem}
+.tool p{margin:4px 0 0;color:var(--muted);font-size:.85rem}
+
+.note{border-left:4px solid var(--accent);background:var(--accent-soft);padding:14px 18px;border-radius:0 10px 10px 0;margin-top:24px}
+footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font-size:.9rem;text-align:center}
+
+.edition{background:var(--accent-soft);border-bottom:1px solid var(--border);font-size:.9rem;text-align:center;padding:9px 16px}
+.edition a{font-weight:600}
+.compare{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.plan{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:var(--shadow)}
+.plan.here{border:2px solid var(--accent)}
+.plan .badge{display:inline-block;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#fff;margin-bottom:10px}
+.plan .badge.alt{background:var(--surface-2);color:var(--muted)}
+.plan h3{margin:0 0 4px;font-size:1.3rem}
+.plan > p{margin:0 0 14px;color:var(--muted)}
+.plan ul{list-style:none;margin:0 0 16px;padding:0}
+.plan li{padding:6px 0;border-top:1px solid var(--border);font-size:.94rem}
+.plan li::before{content:"✓";color:var(--accent);font-weight:800;margin-right:10px}
+.cluster{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin:8px 0 28px}
+.host{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:center;box-shadow:var(--shadow)}
+.host .st{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:.06em;padding:3px 10px;border-radius:999px;margin-bottom:8px}
+.host .st.on{background:var(--accent);color:#fff}
+.host .st.off{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+.host b{display:block}
+.host small{color:var(--muted)}
+.link{text-align:center;color:var(--muted);font-size:.82rem;line-height:1.4}
+.link b{display:block;color:var(--accent);font-size:1.2rem}
+@media (max-width:720px){.cluster{grid-template-columns:1fr}.link b{transform:rotate(90deg)}}
+.rules{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-top:20px}
+.rule{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:.92rem}
+.rule b{display:block;margin-bottom:2px}
+.rule span{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="edition">🌐 You're viewing the <b>Remote Edition</b>. Only need it on one computer? <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/">See the simpler Local Edition →</a></div>
+
+<nav><div class="wrap">
+  <a class="brand" href="#">🌐 Canvas MCP <span style="color:var(--accent)">Remote</span></a>
+  <div class="links">
+    <a href="#compare" class="hide-sm">Remote vs Local</a>
+    <a href="#setup" class="hide-sm">Setup</a>
+    <a href="#multi">Multi-PC</a>
+    <a href="#tools" class="hide-sm">Tools</a>
+    <a href="#security" class="hide-sm">Security</a>
+    <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server">GitHub</a>
+    <button class="theme" id="theme" aria-label="Toggle theme">◐</button>
+  </div>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <span class="pill">🌐 Remote Edition · <b>209 tools</b> · any device</span>
+  <h1>Your entire Canvas,<br><span class="grad">one question away.</span></h1>
+  <p class="lede">A self-hosted MCP server that gives your AI assistant full student access to Canvas LMS from your phone, laptop or the web. Always on, password-protected, with automatic failover across your computers.</p>
+  <div class="cta">
+    <a class="btn primary" href="#setup">Get started →</a>
+    <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server">★ View on GitHub</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>209</b><span>tools</span></div>
+    <div class="stat"><b>15</b><span>tool groups</span></div>
+    <div class="stat"><b>OAuth 2.1</b><span>password-gated</span></div>
+    <div class="stat"><b>~1 min</b><span>failover</span></div>
+  </div>
+</div></header>
+
+<section id="compare"><div class="wrap">
+  <div class="eyebrow">Choose your edition</div>
+  <h2>Remote or Local?</h2>
+  <p class="sub">Both editions have the same 209 tools. The difference is where you can use them.</p>
+  <div class="compare">
+    <div class="plan here">
+      <span class="badge">You are here</span>
+      <h3>🌐 Remote</h3>
+      <p>Best if you want Canvas everywhere.</p>
+      <ul>
+        <li>Web, desktop and mobile AI apps</li>
+        <li>Always on, in the background</li>
+        <li>Password-protected ngrok tunnel</li>
+        <li>Automatic failover across several computers</li>
+        <li>Set up in about 15 minutes</li>
+      </ul>
+    </div>
+    <div class="plan">
+      <span class="badge alt">Other edition</span>
+      <h3>💻 Local</h3>
+      <p>Best if you only need it on one computer.</p>
+      <ul>
+        <li>Desktop and command-line MCP clients</li>
+        <li>Your AI app starts it automatically</li>
+        <li>Nothing exposed to the internet</li>
+        <li>Needs only Node.js and a Canvas token</li>
+        <li>Set up in about 5 minutes</li>
+      </ul>
+      <a class="btn" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/">Go to Local Edition →</a>
+    </div>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <div class="eyebrow">Features</div>
+  <h2>Built for how students actually use Canvas</h2>
+  <p class="sub">More than a thin API wrapper. Higher-level tools answer the questions you really have.</p>
+  <div class="grid">
+    <div class="card"><div class="ic">📊</div><h3>Grade intelligence</h3><p>What-if scores, “what do I need on the final”, weighted breakdowns and which assignments move your grade most.</p></div>
+    <div class="card"><div class="ic">📅</div><h3>Smart planning</h3><p>Week-ahead view, semester snapshot, study priority ranking and every missing assignment across all courses in one call.</p></div>
+    <div class="card"><div class="ic">📝</div><h3>Safe submissions</h3><p>Submit text, links and files. Every write shows a dry-run preview first and only sends when confirmed.</p></div>
+    <div class="card"><div class="ic">💬</div><h3>Discussions & inbox</h3><p>Pull entire threads in one request, reply, and message instructors with recipient lookup.</p></div>
+    <div class="card"><div class="ic">📁</div><h3>Content & archives</h3><p>Files, pages, modules, lecture captions and a full <code>.imscc</code> course export before access ends.</p></div>
+    <div class="card"><div class="ic">🔁</div><h3>Always on</h3><p>Runs in the background with optional two-computer failover, so the connector stays up when one is off.</p></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">Architecture</div>
+  <h2>How it fits together</h2>
+  <p class="sub">The server only listens on your own computer. A private tunnel with a password-protected login is the only way in.</p>
+  <div class="flow">
+    <div class="node"><b>Your AI app</b><small>desktop · web · mobile</small></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>ngrok tunnel</b><small>HTTPS + OAuth</small></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>supervisor.js</b><small>keeps it alive · failover</small></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>index.js</b><small>127.0.0.1:3939/mcp</small></div>
+    <div class="arrow">→</div>
+    <div class="node"><b>Canvas API</b><small>your school</small></div>
+  </div>
+</div></section>
+
+<section id="setup"><div class="wrap">
+  <div class="eyebrow">Setup</div>
+  <h2>Up and running in about 10 minutes</h2>
+  <p class="sub">You need Node.js 18+, a Canvas account and a free ngrok account.</p>
+  <div class="steps">
+    <div class="step"><div>
+      <h3>Clone and install</h3>
+<pre><button class="copy">Copy</button>git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git
+cd canvas-lms-mcp-server
+npm install</pre>
+    </div></div>
+    <div class="step"><div>
+      <h3>Create a Canvas token</h3>
+      <p>In Canvas, go to <b>Account → Settings → Approved Integrations → + New Access Token</b>. Copy it right away, because Canvas only shows it once.</p>
+    </div></div>
+    <div class="step"><div>
+      <h3>Set up ngrok</h3>
+      <p>Install ngrok, add your authtoken, and claim a free static domain in the <a href="https://dashboard.ngrok.com">ngrok dashboard</a>.</p>
+<pre><button class="copy">Copy</button>winget install --id Ngrok.Ngrok -e
+ngrok update
+ngrok config add-authtoken &lt;your-ngrok-token&gt;</pre>
+      <p style="margin-top:10px">Don't skip <code>ngrok update</code>: the winget version is often too old for ngrok's free plan (<code>ERR_NGROK_121</code>).</p>
+    </div></div>
+    <div class="step"><div>
+      <h3>Configure <code>.env</code></h3>
+      <p>Copy <code>.env.example</code> to <code>.env</code> and fill in your values.</p>
+<pre><button class="copy">Copy</button>CANVAS_API_TOKEN=your_canvas_token
+CANVAS_BASE_URL=https://yourschool.instructure.com
+CANVAS_MCP_PUBLIC_URL=https://your-domain.ngrok-free.dev
+CANVAS_MCP_PASSWORD=a_long_random_password
+CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
+    </div></div>
+    <div class="step"><div>
+      <h3>Start it</h3>
+<pre><button class="copy">Copy</button>node supervisor.js</pre>
+      <p style="margin-top:10px">When the log says <code>active and serving at https://…</code>, it's running. To start it automatically at logon on Windows, see the <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#-quick-start">README</a>.</p>
+    </div></div>
+    <div class="step"><div>
+      <h3>Connect your AI app, on every device</h3>
+      <p>In your AI app's settings, add a <b>custom connector</b> (also called a <i>remote MCP server</i>) with the URL <code>https://&lt;your-domain&gt;/mcp</code> and log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Then ask your assistant to run <code>test_connection</code>.</p>
+      <p style="margin-top:10px">Command-line and editor clients: add an <b>HTTP</b> MCP server named <code>canvas</code> with the same URL.</p>
+    </div></div>
+  </div>
+</div></section>
+
+<section id="multi"><div class="wrap">
+  <div class="eyebrow">Multiple computers</div>
+  <h2>Run it on every computer you own</h2>
+  <p class="sub">Install it on your desktop and your laptop, or more. One computer serves, the others stand by, and if the active one sleeps or shuts down, another takes over in about a minute. Nobody gets logged out.</p>
+
+  <div class="cluster">
+    <div class="host"><span class="st on">ACTIVE</span><b>Computer A</b><small>server + ngrok tunnel</small></div>
+    <div class="link"><b>⇄</b>health check every 25 s<br>login tokens copied every ~100 s</div>
+    <div class="host"><span class="st off">STANDBY</span><b>Computer B</b><small>takes over after 2 missed checks</small></div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div>
+      <h3>Install on the new computer</h3>
+<pre><button class="copy">Copy</button>git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git
+cd canvas-lms-mcp-server
+npm install</pre>
+    </div></div>
+    <div class="step"><div>
+      <h3>Use the same shared settings</h3>
+      <p>Create <code>.env</code> with the <b>same</b> <code>CANVAS_MCP_PUBLIC_URL</code>, <code>CANVAS_MCP_PASSWORD</code> and <code>CANVAS_MCP_CLUSTER_SECRET</code> as your first computer. Give each computer its own Canvas token so you can revoke one without breaking the others. Move secrets with a password manager or USB drive, never by email or cloud storage.</p>
+    </div></div>
+    <div class="step"><div>
+      <h3>Use the same ngrok account</h3>
+<pre><button class="copy">Copy</button>winget install --id Ngrok.Ngrok -e
+ngrok update
+ngrok config add-authtoken &lt;same authtoken as computer A&gt;</pre>
+    </div></div>
+    <div class="step"><div>
+      <h3>Start it at logon and verify</h3>
+      <p>Register the same <code>CanvasSupervisor</code> scheduled task, then check <code>supervisor.log</code>. You should see either <code>active and serving</code> or <code>already active and healthy — … starting in standby</code>. Both mean it's working.</p>
+    </div></div>
+    <div class="step"><div>
+      <h3>Test failover</h3>
+      <p>Fully stop the active computer. Within about a minute, the other one logs <code>active instance appears to be gone — taking over</code>, and your assistant keeps working.</p>
+    </div></div>
+  </div>
+
+  <div class="rules">
+    <div class="rule"><b>✅ Must match everywhere</b><span>Public URL, password, cluster secret, ngrok account</span></div>
+    <div class="rule"><b>🔑 Can differ</b><span>Canvas API token (recommended: one per computer)</span></div>
+    <div class="rule"><b>💤 Sleep is handled</b><span>A computer that wakes up after a takeover steps back to standby on its own</span></div>
+  </div>
+
+  <div class="cta" style="margin-top:28px">
+    <a class="btn primary" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/blob/main/MULTI_DEVICE.md">Read the full multi-device guide →</a>
+  </div>
+</div></section>
+
+<section id="config"><div class="wrap">
+  <div class="eyebrow">Configuration</div>
+  <h2>Environment variables</h2>
+  <p class="sub">Everything lives in <code>.env</code>. The first five are required. The shared ones must match on every computer.</p>
+  <div class="tbl"><table>
+    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>CANVAS_API_TOKEN</code> <span class="tag">required</span></td><td>—</td><td>Your Canvas personal access token</td></tr>
+    <tr><td><code>CANVAS_BASE_URL</code> <span class="tag">required</span></td><td>—</td><td>Your school's Canvas address</td></tr>
+    <tr><td><code>CANVAS_MCP_PUBLIC_URL</code> <span class="tag">remote</span></td><td>—</td><td>Your ngrok static domain</td></tr>
+    <tr><td><code>CANVAS_MCP_PASSWORD</code> <span class="tag">remote</span></td><td>—</td><td>Password for the login page</td></tr>
+    <tr><td><code>CANVAS_MCP_CLUSTER_SECRET</code> <span class="tag">remote</span></td><td>—</td><td>Protects the supervisor's internal endpoints</td></tr>
+    <tr><td><code>CANVAS_ALLOW_WRITES</code></td><td><code>true</code></td><td><code>false</code> = read-only mode</td></tr>
+    <tr><td><code>CANVAS_PROFILE</code></td><td><code>full</code></td><td><code>core</code> = curated subset of tools</td></tr>
+    <tr><td><code>CANVAS_CACHE_TTL</code></td><td><code>60</code></td><td>Response cache time in seconds</td></tr>
+    <tr><td><code>CANVAS_TIMEZONE</code></td><td>system</td><td>Time zone for due-date math</td></tr>
+    <tr><td><code>CANVAS_DOWNLOAD_DIR</code></td><td><code>./canvas-downloads</code></td><td>Where downloads are saved</td></tr>
+    <tr><td><code>CANVAS_MCP_PORT</code></td><td><code>3939</code></td><td>Local port</td></tr>
+  </table></div>
+</div></section>
+
+<section id="tools"><div class="wrap">
+  <div class="eyebrow">Tools</div>
+  <h2>209 tools in 15 groups</h2>
+  <p class="sub">Covers everything a student account can reach, plus <code>raw_canvas_request</code> for anything else.</p>
+  <div class="tools">
+    <div class="tool"><div class="top"><b>Content</b><span class="cnt">33</span></div><p>Files, pages, modules, captions, exports</p></div>
+    <div class="tool"><div class="top"><b>Identity</b><span class="cnt">24</span></div><p>Profile, token expiry, rate limits</p></div>
+    <div class="tool"><div class="top"><b>Discussions</b><span class="cnt">17</span></div><p>Full threads, replies, ratings</p></div>
+    <div class="tool"><div class="top"><b>Courses</b><span class="cnt">16</span></div><p>Permissions, nicknames, favorites</p></div>
+    <div class="tool"><div class="top"><b>Submissions</b><span class="cnt">16</span></div><p>Submit, comment, rubric results</p></div>
+    <div class="tool"><div class="top"><b>Inbox</b><span class="cnt">14</span></div><p>Messages and recipients</p></div>
+    <div class="tool"><div class="top"><b>Grades</b><span class="cnt">13</span></div><p>What-if, needed score, impact</p></div>
+    <div class="tool"><div class="top"><b>Assignments</b><span class="cnt">12</span></div><p>Missing work, late policy</p></div>
+    <div class="tool"><div class="top"><b>Quizzes</b><span class="cnt">12</span></div><p>Read-only: dates, attempts</p></div>
+    <div class="tool"><div class="top"><b>Calendar</b><span class="cnt">11</span></div><p>Events, office-hours booking</p></div>
+    <div class="tool"><div class="top"><b>Groups</b><span class="cnt">11</span></div><p>Group workspaces</p></div>
+    <div class="tool"><div class="top"><b>Rubrics</b><span class="cnt">11</span></div><p>Rubrics and peer reviews</p></div>
+    <div class="tool"><div class="top"><b>Planning</b><span class="cnt">11</span></div><p>Week ahead, priorities</p></div>
+    <div class="tool"><div class="top"><b>Meta</b><span class="cnt">4</span></div><p>Raw requests, diagnostics</p></div>
+    <div class="tool"><div class="top"><b>Search</b><span class="cnt">3</span></div><p>Smart and keyword search</p></div>
+  </div>
+</div></section>
+
+<section id="security"><div class="wrap">
+  <div class="eyebrow">Security</div>
+  <h2>Safe by design</h2>
+  <p class="sub">Your Canvas token never leaves your computer, and your assistant can't act without asking first.</p>
+  <div class="grid">
+    <div class="card"><div class="ic">✋</div><h3>Confirmation gate</h3><p>Anything that sends, submits, posts or deletes shows a preview first and needs <code>confirm: true</code>.</p></div>
+    <div class="card"><div class="ic">🛡️</div><h3>Injection fencing</h3><p>Text other people wrote is wrapped in <code>CANVAS_CONTENT</code> markers and labelled as untrusted.</p></div>
+    <div class="card"><div class="ic">🚫</div><h3>No quiz-taking</h3><p>Quiz attempt endpoints are deliberately left out and blocked.</p></div>
+    <div class="card"><div class="ic">🔑</div><h3>OAuth 2.1</h3><p>Login is rate limited, access tokens last 1 hour and refresh tokens are replaced every time they're used.</p></div>
+  </div>
+  <div class="note"><b>Keep private:</b> <code>.env</code>, <code>oauth-store.json</code> and <code>supervisor.log</code>. All three are already listed in <code>.gitignore</code>.</div>
+</div></section>
+
+<footer><div class="wrap">
+  MIT licensed · Not affiliated with Instructure · <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server">Source</a> · <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/blob/main/MULTI_DEVICE.md">Multi-device guide</a> · <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/">Local Edition</a>
+</div></footer>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('theme');
+  try{var s=localStorage.getItem('theme'); if(s) root.setAttribute('data-theme',s);}catch(e){}
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    var next=cur==='dark'?'light':'dark'; root.setAttribute('data-theme',next);
+    try{localStorage.setItem('theme',next);}catch(e){}
+  });
+  document.querySelectorAll('.copy').forEach(function(b){
+    b.addEventListener('click',function(){
+      var t=b.parentElement.innerText.replace(/^Copy\s*/,'').replace(/^Copied!\s*/,'');
+      navigator.clipboard.writeText(t).then(function(){b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)});
+    });
+  });
+})();
+</script>
+</body>
+</html>
