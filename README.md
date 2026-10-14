@@ -18,6 +18,8 @@
 
 </div>
 
+<p align="center"><img src="https://fireiscoolsolo.github.io/canvas-lms-mcp-server/demo.svg" width="760" alt="Example chat: asking what score is needed on the final and what's due this week (sample data)"></p>
+
 ---
 
 ## 🤔 Remote or Local?
@@ -158,6 +160,13 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 - **Separate coordination secret:** the endpoints the computers use to coordinate need a separate shared secret, compared in constant time.
 
 > **Never commit** `.env`, `oauth-store.json` or `supervisor.log`. They're already listed in `.gitignore`. See [SECURITY.md](SECURITY.md).
+
+## 🎓 Responsible use
+
+This is a study and organization tool. It helps you see deadlines, understand your grades and plan your week. It never takes quizzes, and nothing is sent or submitted until you've seen a preview and confirmed it.
+
+- Follow your school's academic integrity and acceptable-use policies. Some schools restrict personal API tokens or third-party tools.
+- Want zero risk of accidental changes? Set `CANVAS_ALLOW_WRITES=false` for read-only mode.
 
 ## 🛠️ Troubleshooting
 
