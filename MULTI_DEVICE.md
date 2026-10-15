@@ -115,7 +115,51 @@ Start-ScheduledTask -TaskName CanvasSupervisor
 
 No administrator rights are needed. The task runs as you.
 
-> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On macOS or Linux, run `node supervisor.js` with launchd, systemd or pm2 instead.
+> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, run `node supervisor.js` with launchd or pm2 instead.
+
+### Linux: run it as a systemd user service
+
+On Linux, use a systemd **user** service instead of the scheduled task. No root needed here either.
+
+The supervisor looks for ngrok at the Windows path by default, so point it at your ngrok in `.env`:
+
+```bash
+echo "CANVAS_MCP_NGROK_PATH=$(command -v ngrok)" >> .env
+```
+
+Create `~/.config/systemd/user/canvas-mcp.service`. Use your real repo path, and the output of `command -v node` for the node path (user services don't get your shell's `PATH`, so nvm installs won't be found otherwise):
+
+```ini
+[Unit]
+Description=Canvas MCP supervisor (server + ngrok tunnel)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/you/canvas-lms-mcp-server
+ExecStart=/usr/bin/node supervisor.js
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=default.target
+```
+
+Then enable and start it, and let it keep running after you log out (or before you log in after a reboot):
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now canvas-mcp
+loginctl enable-linger "$USER"
+```
+
+The supervisor writes its log to stdout, so on Linux it goes to the journal instead of `supervisor.log`. Follow it with:
+
+```bash
+journalctl --user -u canvas-mcp -f
+```
+
+Use that wherever this guide says to read `supervisor.log`. For a clean restart, `systemctl --user restart canvas-mcp` is enough, since systemd stops the child processes too. After a `git pull`, run `npm install` and then that restart.
 
 ### Step 5: Check that it worked
 

@@ -97,7 +97,7 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New
 Register-ScheduledTask -TaskName CanvasSupervisor -Action $action -Trigger $trigger -Settings $settings -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
 ```
-`run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On macOS or Linux, run `node supervisor.js` under launchd, systemd or pm2.
+`run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, run it as a systemd user service ([example](MULTI_DEVICE.md#linux-run-it-as-a-systemd-user-service)). On macOS, run `node supervisor.js` under launchd or pm2.
 
 ### 7. Connect your AI app, on every device
 In your AI app's settings, add a **custom connector** (also called a *remote MCP server*) with the URL `https://<your-domain>/mcp`, then log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Command-line and editor clients can add it as an **HTTP** MCP server with the same URL.
