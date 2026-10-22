@@ -9,7 +9,6 @@
 
 209 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
 
-[![Downloads](https://img.shields.io/github/downloads/Fireiscoolsolo/canvas-lms-mcp-server/total?label=downloads&logo=github)](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-6E56CF)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
