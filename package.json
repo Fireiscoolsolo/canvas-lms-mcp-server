@@ -1,6 +1,6 @@
 {
   "name": "canvas-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Canvas LMS MCP server - 209 tools for students",
   "type": "module",
   "main": "index.js",

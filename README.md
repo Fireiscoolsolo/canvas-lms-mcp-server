@@ -9,6 +9,7 @@
 
 209 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
 
+[![Downloads](https://img.shields.io/github/downloads/Fireiscoolsolo/canvas-lms-mcp-server/total?label=downloads&logo=github)](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-6E56CF)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -63,6 +64,7 @@ git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git
 cd canvas-lms-mcp-server
 npm install
 ```
+No git? Download the zip from the [latest release](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/latest), unzip it, and run `npm install` inside the folder.
 
 ### 2. Create a Canvas token
 In Canvas, go to **Account → Settings → Approved Integrations → + New Access Token**. Canvas only shows the token once, so copy it right away.
