@@ -130,6 +130,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
 | `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
+| `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
 
 ## 🧰 Tools
 

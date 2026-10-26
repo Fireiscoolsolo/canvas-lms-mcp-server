@@ -25,6 +25,9 @@
  *                                  supervisor.js for active/standby handoff between two machines
  *                                  running this same server. Must be identical on both machines.
  *                                  No effect unless CANVAS_MCP_PUBLIC_URL is also set.
+ *   CANVAS_MCP_TRANSPORT optional  "stdio" (or the --stdio flag) serves over stdin/stdout instead of
+ *                                  HTTP, for directories and sandboxes that inspect servers over
+ *                                  stdio. No HTTP listener, OAuth or tunnel. Default: http
  *
  * Design notes:
  *   - Requests are SERIALIZED. Canvas throttles by request cost and applies an
@@ -40,6 +43,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
@@ -53,7 +57,7 @@ import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { createOAuthProvider } from './oauth-provider.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 // ---------------------------------------------------------------------------
 // Config
@@ -1750,6 +1754,15 @@ async function main() {
   }
 
   log(`registering ${registry.length} tools (profile=${PROFILE}, writes=${ALLOW_WRITES ? 'on' : 'off'}, skipped=${skipped})`);
+
+  // stdio mode: lets directories and sandboxes that only speak stdio (for
+  // example through mcp-proxy) start and inspect this server. Everything
+  // below (HTTP listener, OAuth, handoff endpoints) is skipped.
+  if (process.argv.includes('--stdio') || process.env.CANVAS_MCP_TRANSPORT === 'stdio') {
+    await server.connect(new StdioServerTransport());
+    log('ready on stdio');
+    return;
+  }
 
   // Stateless Streamable HTTP: the 200+ tools above are registered once on
   // the single shared `server`, but the SDK requires a FRESH transport per
