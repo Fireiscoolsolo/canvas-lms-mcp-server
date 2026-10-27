@@ -43,3 +43,37 @@ test('server starts over stdio and lists all tools', { timeout: 30000 }, async (
     child.kill();
   }
 });
+
+test('offline tools work before a token is set', { timeout: 30000 }, async () => {
+  const child = spawn(process.execPath, [path.join(ROOT, 'index.js')], {
+    cwd: ROOT,
+    env: { ...process.env, CANVAS_API_TOKEN: '', CANVAS_BASE_URL: '', CANVAS_MCP_TRANSPORT: 'stdio' },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let buf = '', id = 0;
+  const pending = new Map();
+  child.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      const m = JSON.parse(line);
+      if (m.id != null && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+    }
+  });
+  const rpc = (method, params) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: i, method, params }) + '\n'); });
+
+  try {
+    await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+    for (const name of ['get_server_config', 'search_tools', 'get_rate_limit_status']) {
+      const r = await rpc('tools/call', { name, arguments: {} });
+      assert.ok(!r.result.isError, `${name} should not need a token`);
+    }
+    const online = await rpc('tools/call', { name: 'whoami', arguments: {} });
+    assert.ok(online.result.isError, 'Canvas tools still require a token');
+  } finally {
+    child.kill();
+  }
+});

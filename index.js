@@ -400,7 +400,7 @@ let skipped = 0;
  *   write   - true if the tool changes state (respects CANVAS_ALLOW_WRITES)
  *   confirm - true if irreversible/visible to others (requires confirm:true arg)
  */
-function tool({ name, description, schema = {}, handler, write = false, confirm = false, group = '' }) {
+function tool({ name, description, schema = {}, handler, write = false, confirm = false, group = '', offline = false }) {
   if (PROFILE === 'core' && !CORE_TOOLS.has(name)) { skipped++; return; }
   if (write && !ALLOW_WRITES) { skipped++; return; }
 
@@ -417,11 +417,12 @@ function tool({ name, description, schema = {}, handler, write = false, confirm 
     title: titleFor(name),
     description: desc,
     inputSchema: shape,
-    annotations: { readOnlyHint: !write, destructiveHint: confirm, idempotentHint: !write, openWorldHint: true, ...doc.annotations },
+    annotations: { readOnlyHint: !write, destructiveHint: confirm, idempotentHint: !write, openWorldHint: !offline, ...doc.annotations },
   }, async (args = {}) => {
     try {
-      if (!TOKEN) return fail('CANVAS_API_TOKEN is not set. Add it to the .env file next to index.js.');
-      if (!API) return fail('CANVAS_BASE_URL is not set. Example: https://yourschool.instructure.com');
+      // Offline tools never call Canvas, so they work before the token and URL are set.
+      if (!offline && !TOKEN) return fail('CANVAS_API_TOKEN is not set. Add it to the .env file next to index.js.');
+      if (!offline && !API) return fail('CANVAS_BASE_URL is not set. Example: https://yourschool.instructure.com');
       if (confirm && args.confirm !== true) {
         const preview = typeof handler.preview === 'function' ? await handler.preview(args) : null;
         return ok(preview || args, `DRY RUN. Nothing was sent to Canvas.\nThis action is visible to other people and cannot be fully undone.\nReview the details below, then call ${name} again with confirm=true to execute.`);
@@ -499,7 +500,7 @@ tool({
 });
 
 tool({
-  name: 'get_rate_limit_status', group: A,
+  name: 'get_rate_limit_status', group: A, offline: true,
   description: 'Report the Canvas rate-limit state observed on the most recent API call. Canvas throttles by cumulative request COST, not request count.',
   handler: async () => ok({
     requests_this_session: canvas.requestCount,
@@ -1641,7 +1642,7 @@ tool({
 });
 
 tool({
-  name: 'search_tools', group: O,
+  name: 'search_tools', group: O, offline: true,
   description: 'Search the tools this server exposes by keyword. Useful because the tool surface is large.',
   schema: { query: z.string().optional(), group: z.string().optional() },
   handler: async (a) => {
@@ -1674,7 +1675,7 @@ tool({
 });
 
 tool({
-  name: 'get_server_config', group: O,
+  name: 'get_server_config', group: O, offline: true,
   description: 'Show how this server is configured and what is enabled, without revealing the token.',
   handler: async () => ok({
     server: SERVER_NAME, version: SERVER_VERSION,
