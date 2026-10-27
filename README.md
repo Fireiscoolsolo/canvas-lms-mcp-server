@@ -9,6 +9,8 @@
 
 209 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
 
+[![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
+[![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-6E56CF)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -57,13 +59,30 @@
 
 **You need:** [Node.js 18+](https://nodejs.org), a Canvas account and a free [ngrok](https://ngrok.com) account.
 
-### 1. Download and install
+### 1. Install
+**With npm (easiest):**
 ```bash
-git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git
-cd canvas-lms-mcp-server
-npm install
+npm install -g canvas-lms-mcp-remote
+mkdir canvas-mcp
+cd canvas-mcp
+canvas-lms-mcp-remote init
 ```
-No git? Download the zip from the [latest release](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/latest), unzip it, and run `npm install` inside the folder.
+That folder is your **settings folder**. It holds your `.env`, logins and logs, so run every later step from it.
+
+**Or from source:** `git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git`, then run `npm install` inside the folder. No git? Download the zip from the [latest release](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/latest) instead. The repo folder is then your settings folder.
+
+<details>
+<summary><b>All commands</b></summary>
+
+| Command | What it does |
+|---|---|
+| `canvas-lms-mcp-remote init` | Create a `.env` template in the current folder |
+| `canvas-lms-mcp-remote` | Start the supervisor: server, ngrok tunnel and failover |
+| `canvas-lms-mcp-remote serve` | Start only the HTTP server on `127.0.0.1` (no tunnel) |
+| `canvas-lms-mcp-remote --stdio` | Serve over stdin/stdout, for directories that inspect servers |
+
+From source, use `node supervisor.js` and `node index.js` instead.
+</details>
 
 ### 2. Create a Canvas token
 In Canvas, go to **Account → Settings → Approved Integrations → + New Access Token**. Canvas only shows the token once, so copy it right away.
@@ -77,19 +96,20 @@ ngrok config add-authtoken <your-ngrok-authtoken>
 Then claim your free **static domain** in the [ngrok dashboard](https://dashboard.ngrok.com), e.g. `your-name.ngrok-free.dev`.
 
 ### 4. Configure `.env`
-Copy `.env.example` to `.env` and fill it in. Generate the password and secret with:
+Fill in the `.env` that `init` created. From source, copy `.env.example` to `.env` first. Generate the password and secret with:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
 ### 5. Test it
 ```bash
-node supervisor.js
+canvas-lms-mcp-remote
 ```
+From source, run `node supervisor.js` instead.
 Wait until you see `active and serving at https://…`, then press Ctrl+C.
 
 ### 6. Run it automatically at logon (Windows)
-In PowerShell, **from the repo folder**:
+In PowerShell, **from your settings folder** (the repo folder, if you installed from source):
 ```powershell
 $dir      = (Get-Location).Path
 $action   = New-ScheduledTaskAction -Execute "$dir\run-supervisor.cmd" -WorkingDirectory $dir
@@ -97,6 +117,10 @@ $trigger  = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNA
 $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName CanvasSupervisor -Action $action -Trigger $trigger -Settings $settings -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
+```
+**Installed from npm?** Use this `$action` line instead:
+```powershell
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" >> supervisor.log 2>&1' -WorkingDirectory $dir
 ```
 `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, run it as a systemd user service ([example](MULTI_DEVICE.md#linux-run-it-as-a-systemd-user-service)). On macOS, run `node supervisor.js` under launchd or pm2.
 

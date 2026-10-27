@@ -71,6 +71,8 @@ cd canvas-lms-mcp-server
 npm install
 ```
 
+Or install with npm: `npm install -g canvas-lms-mcp-remote`, then create an empty settings folder, `cd` into it and run `canvas-lms-mcp-remote init`. Run every later step from that folder instead of the repo folder.
+
 ### Step 2: Bring over your settings safely
 
 Create `.env` in the repo folder with the **same** values as your first computer for the four shared settings:
@@ -114,6 +116,11 @@ Start-ScheduledTask -TaskName CanvasSupervisor
 ```
 
 No administrator rights are needed. The task runs as you.
+
+Installed from npm? Replace the `$action` line with:
+```powershell
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" >> supervisor.log 2>&1' -WorkingDirectory $dir
+```
 
 > `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, run `node supervisor.js` with launchd or pm2 instead.
 

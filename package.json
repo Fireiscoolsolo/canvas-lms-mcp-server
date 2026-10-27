@@ -1,15 +1,53 @@
 {
-  "name": "canvas-mcp",
-  "version": "1.0.1",
-  "description": "Canvas LMS MCP server - 209 tools for students",
+  "name": "canvas-lms-mcp-remote",
+  "version": "1.1.0",
+  "description": "Self-hosted Canvas LMS MCP server for every device: 209 student tools over Streamable HTTP with an OAuth 2.1 login, an ngrok tunnel and multi-computer failover.",
+  "mcpName": "io.github.Fireiscoolsolo/canvas-lms-mcp-server",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "canvas-mcp": "index.js"
+    "canvas-lms-mcp-remote": "cli.js"
   },
+  "files": [
+    "cli.js",
+    "index.js",
+    "supervisor.js",
+    "oauth-provider.js",
+    "grade-calculators.js",
+    ".env.example",
+    "README.md",
+    "MULTI_DEVICE.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node supervisor.js",
+    "serve": "node index.js",
+    "test": "node --test"
   },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "canvas",
+    "canvas-lms",
+    "instructure",
+    "lms",
+    "students",
+    "education",
+    "oauth",
+    "ngrok",
+    "self-hosted",
+    "ai-assistant"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git"
+  },
+  "homepage": "https://fireiscoolsolo.github.io/canvas-lms-mcp-server/",
+  "bugs": {
+    "url": "https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/issues"
+  },
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "dotenv": "^16.4.5",

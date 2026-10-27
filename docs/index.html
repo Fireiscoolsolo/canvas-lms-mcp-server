@@ -243,10 +243,12 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
   <p class="sub">You need Node.js 18+, a Canvas account and a free ngrok account.</p>
   <div class="steps">
     <div class="step"><div>
-      <h3>Clone and install</h3>
-<pre><button class="copy">Copy</button>git clone https://github.com/Fireiscoolsolo/canvas-lms-mcp-server.git
-cd canvas-lms-mcp-server
-npm install</pre>
+      <h3>Install</h3>
+<pre><button class="copy">Copy</button>npm install -g canvas-lms-mcp-remote
+mkdir canvas-mcp
+cd canvas-mcp
+canvas-lms-mcp-remote init</pre>
+      <p style="margin-top:10px">That folder holds your settings. Prefer git? <code>git clone</code> the repo and run <code>npm install</code> instead.</p>
     </div></div>
     <div class="step"><div>
       <h3>Create a Canvas token</h3>
@@ -271,7 +273,8 @@ CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
     </div></div>
     <div class="step"><div>
       <h3>Start it</h3>
-<pre><button class="copy">Copy</button>node supervisor.js</pre>
+<pre><button class="copy">Copy</button>canvas-lms-mcp-remote</pre>
+      <p style="margin-top:10px">From source, run <code>node supervisor.js</code> instead.</p>
       <p style="margin-top:10px">When the log says <code>active and serving at https://…</code>, it's running. To start it automatically at logon on Windows, see the <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#-quick-start">README</a>.</p>
     </div></div>
     <div class="step"><div>

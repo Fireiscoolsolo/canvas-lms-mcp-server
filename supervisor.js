@@ -37,12 +37,14 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const DIR = process.cwd();
+const DIR = process.cwd(); // settings folder: .env, oauth-store.json and logs live here
+const PKG_DIR = path.dirname(fileURLToPath(import.meta.url)); // where index.js lives (differs from DIR when installed from npm)
 const NODE = process.execPath;
 // Auto-detect rather than hardcode a username: winget always shims CLI tools
 // under the CURRENT user's %LOCALAPPDATA%, which differs per machine/account.
@@ -103,7 +105,7 @@ async function callInternal(pathname, { method = 'GET', timeoutMs = 6000 } = {})
 // failed spawn, or if a stale handler fires after a fresh restart.
 
 function startServer() {
-  const child = spawn(NODE, ['index.js'], { cwd: DIR, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(NODE, [path.join(PKG_DIR, 'index.js')], { cwd: DIR, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
   serverChild = child;
   child.stdout.on('data', (d) => process.stdout.write(d));
   child.stderr.on('data', (d) => process.stderr.write(d));

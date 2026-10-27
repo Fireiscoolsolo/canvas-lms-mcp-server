@@ -56,6 +56,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { createOAuthProvider } from './oauth-provider.js';
+import { calculateGradeBreakdown, calculateNeededScore, formatWhatIfGrade } from './grade-calculators.js';
 
 dotenv.config({ quiet: true });
 
@@ -808,27 +809,7 @@ tool({
       await canvas.paginate(`/courses/${a.course_id}/students/submissions`, { student_ids: ['self'], per_page: 100 }, { max: 300 }),
       await canvas.get(`/courses/${a.course_id}`, { include: ['total_scores'] }),
     ];
-    const byAssignment = new Map(subs.map((s) => [String(s.assignment_id), s]));
-    const weighted = groups.some((g) => Number(g.group_weight) > 0);
-    const out = groups.map((g) => {
-      let earned = 0, possible = 0;
-      const items = (g.assignments || []).map((asg) => {
-        const s = byAssignment.get(String(asg.id));
-        const graded = s && s.score !== null && s.score !== undefined && s.workflow_state === 'graded';
-        if (graded && !asg.omit_from_final_grade) { earned += Number(s.score); possible += Number(asg.points_possible || 0); }
-        return { assignment_id: asg.id, name: asg.name, points_possible: asg.points_possible, score: s?.score ?? null, status: graded ? 'graded' : (s?.submitted_at ? 'submitted, ungraded' : (s?.missing ? 'missing' : 'not submitted')), due_at: asg.due_at };
-      });
-      const pct = possible > 0 ? (earned / possible) * 100 : null;
-      return { group: g.name, group_id: g.id, weight_percent: weighted ? g.group_weight : null, drop_rules: g.rules, graded_points_earned: earned, graded_points_possible: possible, group_percent: pct === null ? null : Number(pct.toFixed(2)), weighted_contribution: weighted && pct !== null ? Number(((pct / 100) * Number(g.group_weight)).toFixed(2)) : null, assignments: items };
-    });
-    const e = (course.enrollments || [])[0] || {};
-    return ok({
-      course: course.name, weighting: weighted ? 'weighted by assignment group' : 'total points',
-      canvas_reported_current: { score: e.computed_current_score, grade: e.computed_current_grade },
-      canvas_reported_final: { score: e.computed_final_score, grade: e.computed_final_grade },
-      groups: out,
-      note: 'current = graded work only. final = treats ungraded as zero. Drop rules are reported but not applied in this breakdown; Canvas applies them in its own totals.',
-    });
+    return ok(calculateGradeBreakdown(groups, subs, course));
   },
 });
 
@@ -838,14 +819,7 @@ tool({
   schema: { submission_id: ID.describe('Submission ID (from get_my_submission or list_my_submissions)'), score: z.number().describe('Hypothetical score to test') },
   handler: async (a) => {
     const r = await canvas.put(`/submissions/${a.submission_id}/what_if_grades`, { student_entered_score: a.score });
-    const g = Array.isArray(r?.grades) ? r.grades[0] : r?.grades;
-    return ok({
-      tested_score: a.score,
-      resulting_current: g?.current, resulting_final: g?.final,
-      current_by_group: g?.current_groups, final_by_group: g?.final_groups,
-      submission: r?.submission,
-      note: 'This is a what-if only. Call reset_what_if_grades to clear it.',
-    });
+    return ok(formatWhatIfGrade(r, a.score));
   },
 });
 tool({ name: 'reset_what_if_grades', group: E, write: true, description: 'Clear all what-if scores in a course and recalculate back to your real grades.', schema: { course_id: COURSE }, handler: async (a) => ok(await canvas.put(`/courses/${a.course_id}/what_if_grades/reset`), 'What-if scores cleared.') });
@@ -863,32 +837,7 @@ tool({
   schema: { course_id: COURSE, target_percent: z.number().describe('Target final grade percentage, e.g. 90') },
   handler: async (a) => {
     const groups = await canvas.paginate(`/courses/${a.course_id}/assignment_groups`, { include: ['assignments', 'submission'] }, { max: 50 });
-    const weighted = groups.some((g) => Number(g.group_weight) > 0);
-    let earned = 0, gradedPossible = 0, remaining = 0;
-    const remainingItems = [];
-    for (const g of groups) {
-      for (const asg of g.assignments || []) {
-        if (asg.omit_from_final_grade) continue;
-        const pts = Number(asg.points_possible || 0);
-        const s = asg.submission;
-        if (s && s.score !== null && s.score !== undefined && s.workflow_state === 'graded') { earned += Number(s.score); gradedPossible += pts; }
-        else if (pts > 0) { remaining += pts; remainingItems.push({ name: asg.name, points: pts, due_at: asg.due_at }); }
-      }
-    }
-    const total = gradedPossible + remaining;
-    const needPoints = (a.target_percent / 100) * total - earned;
-    const needPct = remaining > 0 ? (needPoints / remaining) * 100 : null;
-    return ok({
-      course_id: a.course_id, weighting: weighted ? 'WEIGHTED by group (this estimate uses raw points and will be approximate)' : 'total points (estimate is exact)',
-      points_earned: earned, points_graded_so_far: gradedPossible, points_remaining: remaining, total_points_in_course: total,
-      current_percent: gradedPossible > 0 ? Number(((earned / gradedPossible) * 100).toFixed(2)) : null,
-      target_percent: a.target_percent,
-      points_needed_from_remaining: Number(needPoints.toFixed(2)),
-      required_average_on_remaining_percent: needPct === null ? null : Number(needPct.toFixed(2)),
-      verdict: needPct === null ? 'No ungraded work left; the grade is locked in.' : needPct > 100 ? 'Not reachable even with perfect scores on everything remaining.' : needPct <= 0 ? 'Already secured regardless of remaining work.' : 'Reachable.',
-      remaining_items: remainingItems,
-      caveat: weighted ? 'This course uses group weighting. For an exact answer use what_if_grade, which makes Canvas do the real calculation.' : null,
-    });
+    return ok(calculateNeededScore(groups, a.target_percent, a.course_id));
   },
 });
 
