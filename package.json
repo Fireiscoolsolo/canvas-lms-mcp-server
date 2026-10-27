@@ -1,6 +1,6 @@
 {
   "name": "canvas-lms-mcp-remote",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Self-hosted Canvas LMS MCP server for every device: 209 student tools over Streamable HTTP with an OAuth 2.1 login, an ngrok tunnel and multi-computer failover.",
   "mcpName": "io.github.Fireiscoolsolo/canvas-lms-mcp-server",
   "type": "module",
@@ -14,6 +14,7 @@
     "supervisor.js",
     "oauth-provider.js",
     "grade-calculators.js",
+    "tool-docs.js",
     ".env.example",
     "README.md",
     "MULTI_DEVICE.md",

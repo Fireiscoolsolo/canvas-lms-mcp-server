@@ -57,6 +57,7 @@ import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { createOAuthProvider } from './oauth-provider.js';
 import { calculateGradeBreakdown, calculateNeededScore, formatWhatIfGrade } from './grade-calculators.js';
+import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 
 dotenv.config({ quiet: true });
 
@@ -81,7 +82,7 @@ const CLUSTER_SECRET = process.env.CANVAS_MCP_CLUSTER_SECRET || '';
 const START_TIME = new Date().toISOString();
 
 const SERVER_NAME = 'canvas-lms';
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 /** Normalize the base URL. Accepts with or without trailing slash and /api/v1. */
 function normalizeBase(raw) {
@@ -403,17 +404,20 @@ function tool({ name, description, schema = {}, handler, write = false, confirm 
   if (PROFILE === 'core' && !CORE_TOOLS.has(name)) { skipped++; return; }
   if (write && !ALLOW_WRITES) { skipped++; return; }
 
-  let shape = schema;
+  const doc = TOOL_DOCS[name] || {};
+  if (doc.description) description = doc.description;
+  let shape = documentParams(schema, doc.params);
   let desc = description;
   if (confirm) {
-    shape = { ...schema, confirm: z.boolean().optional().describe('Must be true to actually execute. Omit or set false to get a dry-run preview first.') };
+    shape = { ...shape, confirm: z.boolean().optional().describe('Must be true to actually execute. Omit or set false to get a dry-run preview first.') };
     desc = `${description} [IRREVERSIBLE: call without confirm=true first to preview, then re-call with confirm=true.]`;
   }
 
   server.registerTool(name, {
+    title: titleFor(name),
     description: desc,
     inputSchema: shape,
-    annotations: { readOnlyHint: !write, destructiveHint: confirm, idempotentHint: !write },
+    annotations: { readOnlyHint: !write, destructiveHint: confirm, idempotentHint: !write, openWorldHint: true, ...doc.annotations },
   }, async (args = {}) => {
     try {
       if (!TOKEN) return fail('CANVAS_API_TOKEN is not set. Add it to the .env file next to index.js.');
@@ -520,7 +524,7 @@ get({ name: 'get_communication_channels', group: A, description: 'Notification d
 get({ name: 'get_notification_preferences', group: A, description: 'Notification preferences for one communication channel (how often Canvas emails you about each event type).', path: (a) => `/users/self/communication_channels/${a.channel_id}/notification_preferences`, schema: { channel_id: ID } });
 get({ name: 'get_my_page_views', group: A, description: 'Your own Canvas page view history. Useful for proving you accessed material on a given date.', path: '/users/self/page_views', schema: { start_time: z.string().optional().describe('ISO 8601'), end_time: z.string().optional(), limit: LIMIT }, params: (a) => ({ start_time: a.start_time, end_time: a.end_time }), paginate: true, max: 100 });
 get({ name: 'list_content_shares', group: A, description: 'Course content other users have shared directly with you.', path: '/users/self/content_shares/received', paginate: true });
-get({ name: 'get_custom_data', group: A, description: 'Read arbitrary key-value data stored on your Canvas account. Canvas provides this as a free per-user store; useful for persisting notes or state server-side.', path: '/users/self/custom_data', params: (a) => ({ ns: a.namespace || 'canvas-mcp' }), schema: { namespace: z.string().optional().describe('Namespace, default canvas-mcp'), scope: z.string().optional() } });
+get({ name: 'get_custom_data', group: A, description: 'Read arbitrary key-value data stored on your Canvas account. Canvas provides this as a free per-user store; useful for persisting notes or state server-side.', path: (a) => `/users/self/custom_data${a.scope ? '/' + a.scope : ''}`, params: (a) => ({ ns: a.namespace || 'canvas-mcp' }), schema: { namespace: z.string().optional().describe('Namespace, default canvas-mcp'), scope: z.string().optional() } });
 tool({ name: 'set_custom_data', group: A, write: true, description: 'Write arbitrary key-value data to your Canvas account custom-data store.', schema: { data: z.record(z.string(), z.any()).describe('Object to store'), namespace: z.string().optional(), scope: z.string().optional() }, handler: async (a) => ok(await canvas.put(`/users/self/custom_data${a.scope ? '/' + a.scope : ''}`, { ns: a.namespace || 'canvas-mcp', data: a.data })) });
 get({ name: 'list_bookmarks', group: A, description: 'Your saved Canvas bookmarks.', path: '/users/self/bookmarks', paginate: true });
 tool({ name: 'create_bookmark', group: A, write: true, description: 'Save a Canvas bookmark pointing at a course URL.', schema: { name: z.string(), url: z.string().describe('Canvas-relative URL, e.g. /courses/123/assignments/456'), position: z.number().int().optional() }, handler: async (a) => ok(await canvas.post('/users/self/bookmarks', { name: a.name, url: a.url, position: a.position })) });
@@ -598,7 +602,7 @@ get({ name: 'get_late_policy', group: C, description: 'The course late policy: e
 tool({
   name: 'list_missing_submissions', group: C,
   description: 'Every assignment across ALL courses that Canvas considers missing. Single cross-course call, far cheaper than looping courses.',
-  schema: { include_planner_overrides: z.boolean().optional(), limit: LIMIT },
+  schema: { limit: LIMIT },
   handler: async (a) => {
     const rows = await canvas.paginate('/users/self/missing_submissions', { include: ['planner_overrides', 'course'], filter: ['submittable'] }, { max: a.limit || 100 });
     return ok(rows.map((r) => ({
@@ -752,11 +756,11 @@ tool({ name: 'upload_submission_file', group: D, write: true, description: 'Uplo
 
 const postComment = async (a) => {
   assertClean(a.comment, 'comment');
-  const r = await canvas.put(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self`, { comment: { text_comment: a.comment } });
+  const r = await canvas.put(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self`, { comment: { text_comment: a.comment, file_ids: a.file_ids } });
   return ok(pick(r, ['id', 'submission_comments']), 'Comment posted.');
 };
-postComment.preview = async (a) => ({ ...(await assignmentPreview(a)), action: 'post comment visible to instructor', comment: a.comment });
-tool({ name: 'post_submission_comment', group: D, write: true, confirm: true, description: 'Post a comment on your own submission. Your instructor sees this.', schema: { course_id: COURSE, assignment_id: ID, comment: z.string() }, handler: postComment });
+postComment.preview = async (a) => ({ ...(await assignmentPreview(a)), action: 'post comment visible to instructor', comment: a.comment, attached_file_ids: a.file_ids });
+tool({ name: 'post_submission_comment', group: D, write: true, confirm: true, description: 'Post a comment on your own submission. Your instructor sees this.', schema: { course_id: COURSE, assignment_id: ID, comment: z.string(), file_ids: z.array(z.string()).optional() }, handler: postComment });
 
 tool({ name: 'upload_comment_attachment', group: D, write: true, description: 'Upload a file to attach to a submission comment.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string() }, handler: async (a) => ok(pick(await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/comments/files`, a.file_path), ['id', 'filename', 'size', 'url'])) });
 
@@ -904,7 +908,7 @@ get({ name: 'get_quiz_submission_time', group: F, description: 'Time remaining a
 get({ name: 'list_quiz_questions', group: F, description: 'Questions on a quiz. Canvas hides these from students unless the quiz is completed and the instructor allows reviewing answers, so this commonly returns 401/empty. Intended for post-hoc review of a graded quiz.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/questions`, schema: { course_id: COURSE, quiz_id: ID, quiz_submission_id: z.string().optional() }, params: (a) => ({ quiz_submission_id: a.quiz_submission_id }), paginate: true, fenceFields: ['question_text', 'correct_comments', 'incorrect_comments', 'neutral_comments'] });
 get({ name: 'get_quiz_extensions', group: F, description: 'Extra time or extra attempts granted to you on a quiz (accommodations).', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/extensions`, schema: { course_id: COURSE, quiz_id: ID } });
 get({ name: 'get_quiz_ip_filters', group: F, description: 'IP address restrictions on a quiz (used for proctored/lab-only exams).', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/ip_filters`, schema: { course_id: COURSE, quiz_id: ID } });
-get({ name: 'get_quiz_assignment_overrides', group: F, description: 'Per-section or per-student due date overrides on quizzes in a course.', path: (a) => `/courses/${a.course_id}/quizzes/assignment_overrides`, schema: { course_id: COURSE, quiz_assignment_overrides: z.array(z.string()).optional() } });
+get({ name: 'get_quiz_assignment_overrides', group: F, description: 'Per-section or per-student due date overrides on quizzes in a course.', path: (a) => `/courses/${a.course_id}/quizzes/assignment_overrides`, schema: { course_id: COURSE, quiz_assignment_overrides: z.array(z.string()).optional() }, params: (a) => ({ 'quiz_assignment_overrides[][quiz_ids]': a.quiz_assignment_overrides }) });
 get({ name: 'list_new_quizzes', group: F, description: 'New Quizzes (Quiz LTI) in a course. New Quizzes is a separate service from Classic Quizzes and may not be enabled at your institution.', path: (a) => `/courses/${a.course_id}/quizzes`, schema: { course_id: COURSE }, params: () => ({ include: ['all_dates'] }), paginate: true, fields: ['id', 'title', 'quiz_type', 'due_at', 'points_possible', 'question_count'] });
 get({ name: 'get_new_quiz', group: F, description: 'Detail for a New Quizzes assessment via the Quiz LTI API path.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}`, schema: { course_id: COURSE, quiz_id: ID } });
 get({ name: 'get_new_quiz_items', group: F, description: 'Items (questions) in a New Quizzes assessment. Requires instructor scope at most institutions.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/items`, schema: { course_id: COURSE, quiz_id: ID }, paginate: true });

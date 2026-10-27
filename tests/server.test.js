@@ -35,6 +35,10 @@ test('server starts over stdio and lists all tools', { timeout: 30000 }, async (
     const list = await rpc('tools/list', {});
     assert.equal(list.result.tools.length, EXPECTED_TOOLS);
     assert.equal(nonJson, 0, 'stdout must carry only protocol messages');
+    for (const t of list.result.tools) {
+      assert.ok(t.title, `${t.name} has a title`);
+      for (const [k, v] of Object.entries(t.inputSchema.properties || {})) assert.ok(v.description, `${t.name}.${k} has a description`);
+    }
   } finally {
     child.kill();
   }
