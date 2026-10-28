@@ -63,6 +63,11 @@
 
 ## 🚀 Quick start
 
+> [!NOTE]
+> **Rather click than type?** Download the **[Canvas MCP Setup app for Windows](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.1.2/CanvasMCPSetup-Setup-0.1.0.exe)** (115 MB). It walks you through these steps with pictures and checks each one as you go, for both the Remote and Local editions.
+>
+> Windows may show "Windows protected your PC" because the app isn't code-signed yet. Click **More info**, then **Run anyway**.
+
 **You need:** [Node.js 18+](https://nodejs.org), a Canvas account and a free [ngrok](https://ngrok.com) account.
 
 ### 1. Install
