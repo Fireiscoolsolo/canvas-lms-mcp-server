@@ -64,7 +64,7 @@
 ## 🚀 Quick start
 
 > [!NOTE]
-> **Rather click than type?** Download the **[Canvas MCP Installer Assistant for Windows](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.1.2/CanvasMCPInstallerAssistant-Setup-0.2.0.exe)** (115 MB). It walks you through these steps with pictures and checks each one as you go, for both the Remote and Local editions.
+> **Rather click than type?** Download the **[Canvas MCP Installer Assistant for Windows](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.1.2/CanvasMCPInstallerAssistant-Setup-0.2.1.exe)** (115 MB). It walks you through these steps with pictures and checks each one as you go, for both the Remote and Local editions.
 >
 > Windows may show "Windows protected your PC" because the app isn't code-signed yet. Click **More info**, then **Run anyway**.
 
