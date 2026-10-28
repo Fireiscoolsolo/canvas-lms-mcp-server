@@ -143,6 +143,16 @@ export const TOOL_DOCS = {
 
   // ---- grades ----
   get_all_grades: { description: 'Get your current and final grades for every active course in one call, including unposted grades where Canvas shows them. Read-only. Use get_course_grade_breakdown to see how one course\'s grade is calculated.' },
+  calculate_gpa: {
+    description: 'Calculate your GPA on a 4.0 scale from your current Canvas grades, weighted by credit hours. Read-only. Uses the letter grade Canvas shows, or converts the percent (93+ A, 90 A-, 87 B+ and so on). Supports what-if grades and extra points for honors or AP classes. Pass-fail courses are listed as excluded.',
+    params: {
+      credits: 'Credit hours per course, keyed by course ID, name or code, e.g. {"Calculus I": 4, "ENG101": 3}. Courses not listed use default_credits.',
+      default_credits: 'Credit hours for courses not in credits. Default 3.',
+      what_if: 'Pretend grades, keyed by course ID, name or code. Each value is a letter ("B+") or a percent (88), e.g. {"Chemistry": "A-"}.',
+      extra_points: 'Extra grade points for weighted GPA, keyed like credits, e.g. {"AP Biology": 1, "Honors English": 0.5}. Leave empty for an unweighted GPA.',
+      use_final_score: 'True to use the final score, which counts missing work as zero, instead of the current score. Default false.',
+    },
+  },
   get_course_grade_breakdown: { description: 'Break down your grade in one course: each assignment group\'s weight, your points earned vs possible, and its weighted contribution to the total. Read-only. Use compute_needed_score to plan toward a target grade.' },
   what_if_grade: { description: 'Enter a hypothetical score on one assignment and get your recalculated course grade, with Canvas applying group weights and drop rules. Writes a what-if score only you can see; it is not a real grade. Undo with reset_what_if_grades. Canvas treats this as expensive; for pure math with no writes, use compute_needed_score.' },
   reset_what_if_grades: { description: 'Clear every what-if score you entered in a course so Canvas shows your real grades again. Only affects your own view.' },
@@ -226,6 +236,13 @@ export const TOOL_DOCS = {
   get_file_metadata: { description: 'Get details for one file: name, size, content type, created and updated dates, and download URL. Read-only. Use download_file to save it locally.' },
   get_file_public_url: { description: 'Get a temporary public download link for a file that works without logging in. Read-only, but anyone with the link can download the file until it expires.' },
   download_file: { description: 'Download one Canvas file and save it to local disk. Returns the saved path and size. Get file_id from list_course_files or list_my_files.' },
+  read_course_file: {
+    description: 'Read the text of a Canvas file so you can summarize it, quiz from it or answer questions about it. Read-only. Works with PDF, Word (.docx), PowerPoint (.pptx, including speaker notes), web pages and plain-text files up to 25 MB. Long files come back in parts: call again with next_offset. Scanned PDFs have no text. Get file_id from list_course_files or list_module_items.',
+    params: {
+      offset: 'Character to start from, for reading the next part of a long file. Use next_offset from the previous call. Default 0.',
+      max_chars: 'Most characters to return in one call. Default 30000, maximum 100000.',
+    },
+  },
   list_my_files: { description: 'List files in your personal Canvas storage (not course files), with names, sizes and IDs. Read-only. For course files use list_course_files.' },
   upload_to_my_files: { description: 'Upload a local file into your personal Canvas storage. Only you can see it until you share or submit it. Returns the new file\'s ID.', params: { parent_folder_path: 'Folder path inside your storage, e.g. "notes/spring". Omit for the top level.' } },
   get_storage_quota: { description: 'Get your personal Canvas storage quota and how much of it is used. Read-only.' },

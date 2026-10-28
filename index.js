@@ -56,7 +56,11 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { createOAuthProvider } from './oauth-provider.js';
-import { calculateGradeBreakdown, calculateNeededScore, formatWhatIfGrade } from './grade-calculators.js';
+import { calculateGpa, calculateGradeBreakdown, calculateNeededScore, formatWhatIfGrade } from './grade-calculators.js';
+import { startAlerts } from './alerts.js';
+import { extractFileText, MAX_FILE_BYTES } from './file-text.js';
+import { registerPrompts } from './prompts.js';
+import { registerResources } from './resources.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 
 dotenv.config({ quiet: true });
@@ -469,7 +473,7 @@ const COURSE = z.string().describe('Canvas course ID');
 const LIMIT = z.number().int().positive().optional().describe('Max items to return');
 
 // ===========================================================================
-// A. IDENTITY AND DIAGNOSTICS (24)
+// A. IDENTITY AND DIAGNOSTICS (25)
 // ===========================================================================
 const A = 'identity';
 
@@ -781,7 +785,7 @@ tool({
 });
 
 // ===========================================================================
-// E. GRADES AND ANALYTICS (13)
+// E. GRADES AND ANALYTICS (14)
 // ===========================================================================
 const E = 'grades';
 
@@ -801,6 +805,30 @@ tool({
       };
     });
     return ok(omitEmpty(rows));
+  },
+});
+
+tool({
+  name: 'calculate_gpa', group: E,
+  description: 'Your GPA on a 4.0 scale from your current course grades, weighted by credit hours, with optional what-if grades.',
+  schema: {
+    credits: z.record(z.string(), z.number().positive()).optional(),
+    default_credits: z.number().positive().optional(),
+    what_if: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+    extra_points: z.record(z.string(), z.number().min(0).max(2)).optional(),
+    use_final_score: z.boolean().optional(),
+  },
+  handler: async (a) => {
+    const courses = await canvas.paginate('/courses', { enrollment_state: 'active', include: ['total_scores', 'term'] }, { max: 60, ttl: 30000 });
+    const rows = courses.map((c) => {
+      const e = (c.enrollments || []).find((x) => x.type === 'student') || (c.enrollments || [])[0] || {};
+      return {
+        course_id: c.id, course: c.name, code: c.course_code,
+        score: a.use_final_score ? e.computed_final_score : e.computed_current_score,
+        grade: a.use_final_score ? e.computed_final_grade : e.computed_current_grade,
+      };
+    });
+    return ok(omitEmpty(calculateGpa(rows, { credits: a.credits, defaultCredits: a.default_credits, whatIf: a.what_if, extraPoints: a.extra_points })));
   },
 });
 
@@ -1068,7 +1096,7 @@ get({ name: 'list_my_reservations', group: I, description: 'Appointment slots yo
 get({ name: 'get_course_pace', group: I, description: 'Course pacing plan for self-paced courses (per-module day allocations).', path: (a) => `/courses/${a.course_id}/course_pacing`, schema: { course_id: COURSE } });
 
 // ===========================================================================
-// J. FILES AND CONTENT (33)
+// J. FILES AND CONTENT (34)
 // ===========================================================================
 const J = 'content';
 
@@ -1119,6 +1147,40 @@ tool({
     const dest = path.join(dir, meta.display_name || meta.filename || `file-${a.file_id}`);
     fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
     return ok({ saved_to: dest, bytes: fs.statSync(dest).size, content_type: meta['content-type'] });
+  },
+});
+
+tool({
+  name: 'read_course_file', group: J,
+  description: 'Read the text of a course file (PDF, Word, PowerPoint or plain text) so it can be summarized or studied.',
+  schema: {
+    file_id: ID,
+    offset: z.number().int().min(0).optional(),
+    max_chars: z.number().int().positive().optional(),
+  },
+  handler: async (a) => {
+    const meta = await canvas.get(`/files/${a.file_id}`);
+    const name = meta.display_name || meta.filename || `file-${a.file_id}`;
+    if (meta.size > MAX_FILE_BYTES) return fail(`"${name}" is ${Math.round(meta.size / 1048576)} MB, which is too big to read here (limit 25 MB). Use download_file to save it instead.`);
+    const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (!res.ok) return fail(`Download failed with ${res.status}.`);
+    let extracted;
+    try {
+      extracted = await extractFileText(Buffer.from(await res.arrayBuffer()), { name, contentType: meta['content-type'], html2text });
+    } catch (e) {
+      return fail(e.message);
+    }
+    const text = extracted.text.replace(/[ \t]+\n/g, '\n').trim();
+    const hasWords = /[A-Za-z0-9]{3}/.test(text.replace(/--- (Page|Slide) \d+ ---/g, ''));
+    const start = Math.min(a.offset || 0, text.length);
+    const chunk = text.slice(start, start + Math.min(a.max_chars || 30000, 100000));
+    const next = start + chunk.length < text.length ? start + chunk.length : null;
+    return ok(omitEmpty({
+      file: name, kind: extracted.kind, total_chars: text.length, offset: start, next_offset: next,
+      note: !hasWords ? 'No readable text found. This is probably a scanned document (pictures of pages), which needs OCR.'
+        : next !== null ? `Showing characters ${start}-${start + chunk.length} of ${text.length}. Call again with offset ${next} for the rest.` : undefined,
+      text: hasWords ? fence(chunk, `course file: ${name}`) : undefined,
+    }));
   },
 });
 
@@ -1691,6 +1753,12 @@ tool({
   }),
 });
 
+// Prompts (the AI app's prompt menu) and resources (its attach menu). Neither adds tools.
+registerPrompts(server, {
+  listCourseNames: async () => (TOKEN && API ? (await canvas.paginate('/courses', { enrollment_state: 'active' }, { max: 60, ttl: 60000 })).map((c) => c.name) : []),
+});
+registerResources(server, { canvas, html2text, fence, ready: () => Boolean(TOKEN && API) });
+
 // ===========================================================================
 // Bootstrap
 // ===========================================================================
@@ -1828,7 +1896,11 @@ async function main() {
   app.delete('/mcp', mcpAuthMiddleware, queueMcp);
   app.get('/healthz', (_req, res) => res.json({ ok: true, tools: registry.length, connected_to: BASE || null, auth_enabled: AUTH_ENABLED }));
 
-  app.listen(PORT, HOST, () => log(`ready on http://${HOST}:${PORT}/mcp`));
+  app.listen(PORT, HOST, () => {
+    log(`ready on http://${HOST}:${PORT}/mcp`);
+    // Only the computer that is serving runs this, so phone alerts are never sent twice.
+    if (TOKEN && API) startAlerts({ canvas, log, baseUrl: BASE });
+  });
 }
 
 process.on('uncaughtException', (e) => log(`uncaught: ${e.stack || e.message}`));

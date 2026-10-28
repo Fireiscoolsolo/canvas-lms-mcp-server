@@ -3,3 +3,4 @@ node_modules/
 oauth-store.json
 supervisor.log
 canvas-downloads/
+alerts-state.json

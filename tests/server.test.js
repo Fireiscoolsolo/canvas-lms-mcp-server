@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const EXPECTED_TOOLS = 209;
+const EXPECTED_TOOLS = 211;
 
 test('server starts over stdio and lists all tools', { timeout: 30000 }, async () => {
   const child = spawn(process.execPath, [path.join(ROOT, 'index.js')], {
@@ -73,6 +73,50 @@ test('offline tools work before a token is set', { timeout: 30000 }, async () =>
     }
     const online = await rpc('tools/call', { name: 'whoami', arguments: {} });
     assert.ok(online.result.isError, 'Canvas tools still require a token');
+  } finally {
+    child.kill();
+  }
+});
+
+test('server offers prompts and attachable Canvas items', { timeout: 60000 }, async () => {
+  const child = spawn(process.execPath, [path.join(ROOT, 'index.js')], {
+    cwd: ROOT,
+    env: { ...process.env, CANVAS_API_TOKEN: '', CANVAS_BASE_URL: '', CANVAS_MCP_TRANSPORT: 'stdio' },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let buf = '', id = 0;
+  const pending = new Map();
+  child.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      const m = JSON.parse(line);
+      if (m.id != null && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+    }
+  });
+  const rpc = (method, params) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: i, method, params }) + '\n'); });
+
+  try {
+    const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
+    assert.ok(init.result.capabilities.prompts, 'prompts capability');
+    assert.ok(init.result.capabilities.resources, 'resources capability');
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+
+    const prompts = await rpc('prompts/list', {});
+    assert.deepEqual(prompts.result.prompts.map((p) => p.name).sort(), ['catch_up_on_course', 'exam_prep', 'grade_check', 'plan_my_week', 'what_did_i_miss']);
+    for (const p of prompts.result.prompts) assert.ok(p.title && p.description, `${p.name} has a title and description`);
+
+    const exam = await rpc('prompts/get', { name: 'exam_prep', arguments: { course: 'Biology 101', exam: 'Midterm 2' } });
+    const text = exam.result.messages[0].content.text;
+    assert.match(text, /"Midterm 2" in Biology 101/);
+    assert.match(text, /read_course_file/);
+
+    const templates = await rpc('resources/templates/list', {});
+    assert.deepEqual(templates.result.resourceTemplates.map((t) => t.uriTemplate).sort(), ['canvas://courses/{course_id}/assignments/{assignment_id}', 'canvas://courses/{course_id}/syllabus']);
+    const listed = await rpc('resources/list', {});
+    assert.deepEqual(listed.result.resources, [], 'nothing to list before a token is set');
   } finally {
     child.kill();
   }

@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  calculateGpa,
   calculateGradeBreakdown,
   calculateNeededScore,
-  formatWhatIfGrade
+  formatWhatIfGrade,
+  letterFromPercent
 } from '../grade-calculators.js';
 
 test('calculates weighted grade contribution', () => {
@@ -164,4 +166,37 @@ test('formats Canvas what-if grade response correctly', () => {
   assert.deepEqual(result.current_by_group, { Assignments: 90 });
   assert.deepEqual(result.final_by_group, { Assignments: 85 });
   assert.deepEqual(result.submission, { id: 123 });
+});
+
+test('calculateGpa weights by credits, prefers Canvas letters and excludes pass-fail', () => {
+  const rows = [
+    { course_id: '1', course: 'Calculus I', code: 'MATH151', score: 91.2, grade: null },
+    { course_id: '2', course: 'English', code: 'ENG101', score: 88, grade: 'B+' },
+    { course_id: '3', course: 'Gym', code: 'PE', score: null, grade: 'P' },
+    { course_id: '4', course: 'New class', code: 'NEW', score: null, grade: null },
+  ];
+  const r = calculateGpa(rows, { credits: { 'calculus i': 4, ENG101: 3 } });
+  assert.equal(r.gpa, 3.53); // (3.7*4 + 3.3*3) / 7
+  assert.equal(r.total_credits, 7);
+  assert.deepEqual(r.courses.map((c) => c.letter), ['A-', 'B+']);
+  assert.deepEqual(r.excluded.map((e) => e.course), ['Gym', 'New class']);
+  assert.match(r.excluded[0].reason, /"P" isn't a letter grade/);
+  assert.equal(r.note, undefined);
+});
+
+test('calculateGpa what-if, default credits and weighted extra points', () => {
+  const rows = [{ course_id: '1', course: 'Chem', score: 75, grade: null }, { course_id: '2', course: 'AP Bio', score: 95, grade: null }];
+  const base = calculateGpa(rows);
+  assert.equal(base.gpa, 3); // C (2.0) and A (4.0), equal default credits
+  assert.match(base.note, /3 credits/);
+  assert.equal(calculateGpa(rows, { whatIf: { chem: 'B' } }).gpa, 3.5);
+  assert.equal(calculateGpa(rows, { whatIf: { 1: 91 } }).courses[0].letter, 'A-');
+  const weighted = calculateGpa(rows, { extraPoints: { 'AP Bio': 1 } });
+  assert.equal(weighted.gpa, 3.5);
+  assert.match(weighted.scale, /weighted/);
+  assert.equal(calculateGpa([]).gpa, null);
+});
+
+test('letterFromPercent cutoffs', () => {
+  assert.deepEqual([100, 93, 92.9, 87, 83, 80, 77, 73, 70, 67, 63, 60, 59.9].map(letterFromPercent), ['A', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F']);
 });

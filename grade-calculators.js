@@ -69,3 +69,63 @@ export function formatWhatIfGrade(response, score) {
     note: 'This is a what-if only. Call reset_what_if_grades to clear it.',
   };
 }
+
+// Standard US 4.0 scale. Letters Canvas shows (from a course's grading scheme) win over the percent cutoffs.
+const LETTER_POINTS = { 'A+': 4.0, A: 4.0, 'A-': 3.7, 'B+': 3.3, B: 3.0, 'B-': 2.7, 'C+': 2.3, C: 2.0, 'C-': 1.7, 'D+': 1.3, D: 1.0, 'D-': 0.7, F: 0 };
+const PERCENT_CUTOFFS = [[93, 'A'], [90, 'A-'], [87, 'B+'], [83, 'B'], [80, 'B-'], [77, 'C+'], [73, 'C'], [70, 'C-'], [67, 'D+'], [63, 'D'], [60, 'D-'], [0, 'F']];
+
+export function letterFromPercent(pct) {
+  return PERCENT_CUTOFFS.find(([min]) => pct >= min)[1];
+}
+
+/** Find a per-course setting by course ID, name or code, ignoring case. */
+function lookup(map, row) {
+  if (!map) return undefined;
+  const keys = [row.course_id, row.course, row.code].filter(Boolean).map((k) => String(k).toLowerCase());
+  for (const [k, v] of Object.entries(map)) if (keys.includes(String(k).toLowerCase())) return v;
+  return undefined;
+}
+
+/**
+ * GPA across courses on a 4.0 scale, weighted by credit hours.
+ * rows: [{ course_id, course, code, score (percent), grade (letter or null) }]
+ * credits / what_if / extra_points: maps keyed by course ID, name or code. what_if values are a letter or a percent.
+ */
+export function calculateGpa(rows, { credits, defaultCredits = 3, whatIf, extraPoints } = {}) {
+  const counted = [];
+  const excluded = [];
+  for (const r of rows) {
+    const override = lookup(whatIf, r);
+    let letter;
+    let source = 'canvas';
+    if (override !== undefined) {
+      source = 'what-if';
+      letter = typeof override === 'number' || /^\d+(\.\d+)?%?$/.test(String(override).trim())
+        ? letterFromPercent(parseFloat(override))
+        : String(override).trim().toUpperCase();
+    } else if (r.grade && LETTER_POINTS[String(r.grade).trim().toUpperCase()] !== undefined) {
+      letter = String(r.grade).trim().toUpperCase();
+    } else if (typeof r.score === 'number') {
+      letter = letterFromPercent(r.score);
+    } else if (r.grade) {
+      letter = String(r.grade).trim().toUpperCase(); // e.g. P or Complete; excluded below with the reason
+    }
+    if (!letter || LETTER_POINTS[letter] === undefined) {
+      excluded.push({ course: r.course, reason: letter ? `"${letter}" isn't a letter grade on the 4.0 scale` : 'No grade shown yet' });
+      continue;
+    }
+    const creditHours = Number(lookup(credits, r) ?? defaultCredits);
+    const bonus = Number(lookup(extraPoints, r) || 0);
+    counted.push({ course: r.course, score: r.score ?? null, letter, points: LETTER_POINTS[letter] + bonus, credits: creditHours, source });
+  }
+  const totalCredits = counted.reduce((s, c) => s + c.credits, 0);
+  const gpa = totalCredits ? counted.reduce((s, c) => s + c.points * c.credits, 0) / totalCredits : null;
+  return {
+    gpa: gpa === null ? null : Number(gpa.toFixed(2)),
+    scale: extraPoints && Object.keys(extraPoints).length ? '4.0 scale with extra points (weighted)' : '4.0 scale (unweighted)',
+    total_credits: totalCredits,
+    courses: counted,
+    excluded,
+    note: credits ? undefined : `Every course counts as ${defaultCredits} credits. Pass credits per course for an exact GPA.`,
+  };
+}

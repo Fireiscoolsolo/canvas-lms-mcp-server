@@ -24,7 +24,7 @@ test('HTTP mode serves /healthz with all tools', { timeout: 30000 }, async () =>
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
-    assert.equal(body.tools, 209);
+    assert.equal(body.tools, 211);
     assert.equal(body.auth_enabled, false);
   } finally {
     child.kill();

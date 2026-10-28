@@ -189,7 +189,7 @@ Then confirm the public address answers:
 Invoke-RestMethod https://<your-domain>/healthz -Headers @{ 'ngrok-skip-browser-warning' = '1' }
 ```
 
-Expected: `ok: True`, `tools: 209`, `auth_enabled: True`.
+Expected: `ok: True`, `tools: 211`, `auth_enabled: True`.
 
 ### Step 6: Test failover in both directions
 

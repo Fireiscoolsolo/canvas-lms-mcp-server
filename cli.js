@@ -16,6 +16,7 @@ Run these from the folder that holds your .env (it also stores logins and logs):
   canvas-lms-mcp-remote init      Create a .env template here
   canvas-lms-mcp-remote           Start the supervisor: server + ngrok tunnel + failover
   canvas-lms-mcp-remote serve     Start only the HTTP server on 127.0.0.1 (no tunnel)
+  canvas-lms-mcp-remote test-alert  Send a test phone alert using the alert settings in .env
   canvas-lms-mcp-remote --stdio   Serve over stdin/stdout (for directory checks)
 
 Guide: https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#-quick-start`;
@@ -34,6 +35,17 @@ if (args.includes('--help') || args.includes('-h') || cmd === 'help') {
   } else {
     fs.copyFileSync(path.join(PKG_DIR, '.env.example'), target);
     console.log(`Created ${target}\nFill in your Canvas token, ngrok domain, password and cluster secret, then run: canvas-lms-mcp-remote`);
+  }
+} else if (cmd === 'test-alert') {
+  (await import('dotenv')).default.config();
+  const { sendTestAlert } = await import('./alerts.js');
+  try {
+    const { channels, failed } = await sendTestAlert();
+    console.log(`Sent a test alert via ${channels.join(' and ')}. Check your phone.`);
+    for (const f of failed) console.log(`Not sent: ${f}`);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
   }
 } else if (cmd === 'serve') {
   await import('./index.js');

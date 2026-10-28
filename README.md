@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[💻 Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)**. It has the same 209 tools, with no ngrok, no password and about 5 minutes of setup.
+> **Want it to run locally, on just your own computer?** Go to the **[💻 Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)**. It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
 
 <div align="center">
 
@@ -7,7 +7,7 @@
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
-209 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
+211 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
 
 [![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
@@ -42,11 +42,13 @@
 
 ## ✨ Highlights
 
-- **📊 Grade intelligence**: `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, full weighted breakdowns
+- **📊 Grade intelligence**: `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa`, full weighted breakdowns
 - **📅 Planning**: `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, cross-course missing work in one call
 - **📝 Submissions**: submit text, URLs and files, with a dry-run preview first
 - **💬 Discussions & inbox**: read whole threads in one request and message instructors
-- **📁 Content**: files, pages, modules, lecture captions and full `.imscc` course export
+- **📁 Content**: read lecture PDFs, Word docs and slides with `read_course_file`, plus pages, modules, captions and full `.imscc` course export
+- **⚡ Prompts and attachments**: one-click prompts like *Plan my week* and *Prep me for an exam*, and attach a syllabus or assignment to a chat
+- **📱 Phone alerts**: new grades, announcements, work due soon and an expiring token, sent to your phone or Discord
 - **🔐 Secure remote access**: password-gated OAuth 2.1 over an ngrok tunnel
 - **🔁 Multi-computer failover**: run it on two or more computers, and if one sleeps, another takes over in about a minute
 
@@ -57,7 +59,7 @@
           │  HTTPS + OAuth
           ▼
    your-domain.ngrok-free.dev ──►  supervisor.js  ──►  index.js (127.0.0.1:3939/mcp)  ──►  Canvas API
-                                   (keeps it alive,     (209 tools, OAuth,
+                                   (keeps it alive,     (211 tools, OAuth,
                                     failover)            rate-limit aware)
 ```
 
@@ -166,26 +168,59 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
 | `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
 | `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
+| `CANVAS_ALERTS_NTFY_TOPIC` | | — | ntfy topic for [phone alerts](#-phone-alerts). Treat it like a password |
+| `CANVAS_ALERTS_DISCORD_WEBHOOK` | | — | Discord webhook URL for [phone alerts](#-phone-alerts) |
+| `CANVAS_ALERTS` | | all | Which alerts to send: `grades,announcements,due,token` |
+| `CANVAS_ALERTS_DUE_HOURS` | | `24` | How far ahead "due soon" alerts look |
+| `CANVAS_ALERTS_INTERVAL_MINUTES` | | `15` | How often to check for alerts (at least 5) |
+| `CANVAS_ALERTS_NTFY_SERVER` | | `https://ntfy.sh` | Your own ntfy server, if you run one |
 
 ## 🧰 Tools
 
 | Group | Count | Highlights |
 |---|:-:|---|
-| Identity | 24 | `check_token_expiry`, `get_rate_limit_status`, custom-data storage |
+| Identity | 25 | `check_token_expiry`, `get_rate_limit_status`, custom-data storage |
 | Courses | 16 | permissions, nicknames, favorites |
 | Assignments | 12 | `list_missing_submissions`, `get_late_policy` |
 | Submissions | 16 | text, URL and file submission, comments, rubric assessments |
-| Grades | 13 | `what_if_grade`, `compute_needed_score`, `grade_impact_ranking` |
+| Grades | 14 | `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa` |
 | Quizzes | 12 | read-only: dates, attempts, reviews |
 | Discussions | 17 | `get_full_topic_view`, replies, ratings |
 | Inbox | 14 | messaging, `find_recipients`, threads |
 | Calendar | 11 | events, office-hours booking |
-| Content | 33 | files, pages, modules, captions, `.imscc` export |
+| Content | 34 | files, pages, modules, captions, `read_course_file` for PDF, Word and PowerPoint, `.imscc` export |
 | Groups | 11 | group workspaces |
 | Rubrics | 11 | peer reviews |
 | Search | 3 | `smart_search` with keyword fallback |
 | Planning | 11 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking` |
 | Meta | 4 | `raw_canvas_request` for any endpoint not listed above |
+
+### ⚡ Prompts and attachments
+
+The server also adds these to your AI app's menus. They don't count as tools.
+
+- **Prompts**: *Plan my week*, *What did I miss?*, *Prep me for an exam*, *How are my grades?* and *Catch me up on a course*. Each one tells the assistant which tools to use, and course names autocomplete.
+- **Attachments**: attach a course syllabus, or an assignment due in the next 14 days, to a chat the same way you'd attach a file.
+
+Apps that support MCP prompts and resources, such as Claude Desktop, show them in the **+** menu.
+
+## 📱 Phone alerts
+
+Because the Remote Edition is always on, it can tell you when something happens:
+
+- **New grades** (several at once arrive as one summary)
+- **New announcements**
+- **Work due within 24 hours** that you haven't submitted yet
+- **A Canvas token that expires within 5 days**
+
+Alerts are off until you choose where they go. Add one or both to `.env`, then restart the server:
+
+- **Phone app:** install the free [ntfy](https://ntfy.sh) app, subscribe to a long, hard-to-guess topic name (it works like a password), and set `CANVAS_ALERTS_NTFY_TOPIC` to it.
+- **Discord:** in a private Discord server, open a channel's **Settings → Integrations → Webhooks**, create one and set `CANVAS_ALERTS_DISCORD_WEBHOOK` to its URL.
+
+Then run `canvas-lms-mcp-remote test-alert` from your settings folder to check it works. To choose which alerts you get, see `CANVAS_ALERTS` in [Configuration](#️-configuration).
+
+Only the computer that is serving sends alerts, and it remembers what it already sent in your Canvas account's own storage, so you don't get repeats when another computer takes over. Alert text passes through ntfy or Discord, so keep the topic or channel private.
 
 ## 🔐 Security
 
