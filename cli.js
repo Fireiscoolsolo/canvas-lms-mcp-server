@@ -19,7 +19,7 @@ Run these from the folder that holds your .env (it also stores logins and logs):
   canvas-lms-mcp-remote test-alert  Send a test phone alert using the alert settings in .env
   canvas-lms-mcp-remote --stdio   Serve over stdin/stdout (for directory checks)
 
-Guide: https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#-quick-start`;
+Guide: https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#quick-start`;
 
 if (args.includes('--help') || args.includes('-h') || cmd === 'help') {
   console.log(usage);

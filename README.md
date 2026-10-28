@@ -1,9 +1,14 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[💻 Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)**. It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)**. It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
 
 <div align="center">
 
-# 🌐 Canvas LMS MCP: Remote Edition
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://fireiscoolsolo.github.io/canvas-lms-mcp-server/logo-dark.png">
+  <img src="https://fireiscoolsolo.github.io/canvas-lms-mcp-server/logo.png" width="128" alt="Canvas LMS MCP: Remote Edition logo">
+</picture>
+
+# Canvas LMS MCP: Remote Edition
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
@@ -22,7 +27,7 @@
 [![Website](https://img.shields.io/badge/docs-website-orange)](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
-[Website](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/) · [Quick start](#-quick-start) · [**Multi-device guide**](MULTI_DEVICE.md) · [Configuration](#%EF%B8%8F-configuration) · [Tools](#-tools) · [Security](#-security)
+[Website](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/) · [Quick start](#quick-start) · [**Multi-device guide**](MULTI_DEVICE.md) · [Configuration](#configuration) · [Tools](#tools) · [Security](#security)
 
 </div>
 
@@ -30,29 +35,29 @@
 
 ---
 
-## 🤔 Remote or Local?
+## Remote or Local?
 
-| | 🌐 **Remote** (this repo) | 💻 [**Local**](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
+| | **Remote** (this repo) | [**Local**](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
 |---|---|---|
 | Works with | Any MCP client that supports remote servers, **on any device** | Desktop and command-line MCP clients **on this computer** |
 | When it runs | Always on, in the background | Only while your AI app is open |
 | You need | Node.js, a Canvas token, an ngrok account and a password | Node.js and a Canvas token |
 | Internet exposure | Public HTTPS address, password-protected | None |
-| Multiple computers | ✅ Automatic failover ([guide](MULTI_DEVICE.md)) | Install it separately on each one |
+| Multiple computers | Automatic failover ([guide](MULTI_DEVICE.md)) | Install it separately on each one |
 
-## ✨ Highlights
+## Highlights
 
-- **📊 Grade intelligence**: `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa`, full weighted breakdowns
-- **📅 Planning**: `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, cross-course missing work in one call
-- **📝 Submissions**: submit text, URLs and files, with a dry-run preview first
-- **💬 Discussions & inbox**: read whole threads in one request and message instructors
-- **📁 Content**: read lecture PDFs, Word docs and slides with `read_course_file`, plus pages, modules, captions and full `.imscc` course export
-- **⚡ Prompts and attachments**: one-click prompts like *Plan my week* and *Prep me for an exam*, and attach a syllabus or assignment to a chat
-- **📱 Phone alerts**: new grades, announcements, work due soon and an expiring token, sent to your phone or Discord
-- **🔐 Secure remote access**: password-gated OAuth 2.1 over an ngrok tunnel
-- **🔁 Multi-computer failover**: run it on two or more computers, and if one sleeps, another takes over in about a minute
+- **Grade intelligence**: `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa`, full weighted breakdowns
+- **Planning**: `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, cross-course missing work in one call
+- **Submissions**: submit text, URLs and files, with a dry-run preview first
+- **Discussions & inbox**: read whole threads in one request and message instructors
+- **Content**: read lecture PDFs, Word docs and slides with `read_course_file`, plus pages, modules, captions and full `.imscc` course export
+- **Prompts and attachments**: one-click prompts like *Plan my week* and *Prep me for an exam*, and attach a syllabus or assignment to a chat
+- **Phone alerts**: new grades, announcements, work due soon and an expiring token, sent to your phone or Discord
+- **Secure remote access**: password-gated OAuth 2.1 over an ngrok tunnel
+- **Multi-computer failover**: run it on two or more computers, and if one sleeps, another takes over in about a minute
 
-## 🧭 How it works
+## How it works
 
 ```
  Your AI app (web / desktop / mobile / CLI)
@@ -63,7 +68,7 @@
                                     failover)            rate-limit aware)
 ```
 
-## 🚀 Quick start
+## Quick start
 
 > [!NOTE]
 > **Rather click than type?** Download the **[Canvas MCP Installer Assistant for Windows](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.2.0/CanvasMCPInstallerAssistant-Setup-0.3.0.exe)** (115 MB). It walks you through these steps with pictures and checks each one as you go, for both the Remote and Local editions.
@@ -142,23 +147,23 @@ In your AI app's settings, add a **custom connector** (also called a *remote MCP
 
 Then ask your assistant: **"Run test_connection."**
 
-## 🔁 Multiple computers
+## Multiple computers
 
 You can run the same server on two or more computers, for example a desktop and a laptop, so it stays online when one is off or asleep. One computer serves; the others wait in standby and take over automatically.
 
-**➡️ Follow the step-by-step [Multi-Device Setup Guide](MULTI_DEVICE.md).** It covers copying settings safely, the shared ngrok account, the scheduled task, checking it works, testing failover, updating code and changing secrets.
+**Follow the step-by-step [Multi-Device Setup Guide](MULTI_DEVICE.md).** It covers copying settings safely, the shared ngrok account, the scheduled task, checking it works, testing failover, updating code and changing secrets.
 
-## ⚙️ Configuration
+## Configuration
 
 All settings are environment variables in `.env`. See [`.env.example`](.env.example).
 
 | Variable | Required | Default | Description |
 |---|:-:|---|---|
-| `CANVAS_API_TOKEN` | ✅ | — | Your Canvas personal access token |
-| `CANVAS_BASE_URL` | ✅ | — | e.g. `https://yourschool.instructure.com` |
-| `CANVAS_MCP_PUBLIC_URL` | ✅ | — | Your ngrok static domain |
-| `CANVAS_MCP_PASSWORD` | ✅ | — | Password for the OAuth login page |
-| `CANVAS_MCP_CLUSTER_SECRET` | ✅ | — | Secret that protects the `/internal/*` endpoints the computers use to coordinate |
+| `CANVAS_API_TOKEN` | Yes | — | Your Canvas personal access token |
+| `CANVAS_BASE_URL` | Yes | — | e.g. `https://yourschool.instructure.com` |
+| `CANVAS_MCP_PUBLIC_URL` | Yes | — | Your ngrok static domain |
+| `CANVAS_MCP_PASSWORD` | Yes | — | Password for the OAuth login page |
+| `CANVAS_MCP_CLUSTER_SECRET` | Yes | — | Secret that protects the `/internal/*` endpoints the computers use to coordinate |
 | `CANVAS_ALLOW_WRITES` | | `true` | `false` = read-only mode |
 | `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools |
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
@@ -168,14 +173,14 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
 | `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
 | `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
-| `CANVAS_ALERTS_NTFY_TOPIC` | | — | ntfy topic for [phone alerts](#-phone-alerts). Treat it like a password |
-| `CANVAS_ALERTS_DISCORD_WEBHOOK` | | — | Discord webhook URL for [phone alerts](#-phone-alerts) |
+| `CANVAS_ALERTS_NTFY_TOPIC` | | — | ntfy topic for [phone alerts](#phone-alerts). Treat it like a password |
+| `CANVAS_ALERTS_DISCORD_WEBHOOK` | | — | Discord webhook URL for [phone alerts](#phone-alerts) |
 | `CANVAS_ALERTS` | | all | Which alerts to send: `grades,announcements,due,token` |
 | `CANVAS_ALERTS_DUE_HOURS` | | `24` | How far ahead "due soon" alerts look |
 | `CANVAS_ALERTS_INTERVAL_MINUTES` | | `15` | How often to check for alerts (at least 5) |
 | `CANVAS_ALERTS_NTFY_SERVER` | | `https://ntfy.sh` | Your own ntfy server, if you run one |
 
-## 🧰 Tools
+## Tools
 
 | Group | Count | Highlights |
 |---|:-:|---|
@@ -195,7 +200,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | Planning | 11 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking` |
 | Meta | 4 | `raw_canvas_request` for any endpoint not listed above |
 
-### ⚡ Prompts and attachments
+### Prompts and attachments
 
 The server also adds these to your AI app's menus. They don't count as tools.
 
@@ -204,7 +209,7 @@ The server also adds these to your AI app's menus. They don't count as tools.
 
 Apps that support MCP prompts and resources, such as Claude Desktop, show them in the **+** menu.
 
-## 📱 Phone alerts
+## Phone alerts
 
 Because the Remote Edition is always on, it can tell you when something happens:
 
@@ -218,11 +223,11 @@ Alerts are off until you choose where they go. Add one or both to `.env`, then r
 - **Phone app:** install the free [ntfy](https://ntfy.sh) app, subscribe to a long, hard-to-guess topic name (it works like a password), and set `CANVAS_ALERTS_NTFY_TOPIC` to it.
 - **Discord:** in a private Discord server, open a channel's **Settings → Integrations → Webhooks**, create one and set `CANVAS_ALERTS_DISCORD_WEBHOOK` to its URL.
 
-Then run `canvas-lms-mcp-remote test-alert` from your settings folder to check it works. To choose which alerts you get, see `CANVAS_ALERTS` in [Configuration](#️-configuration).
+Then run `canvas-lms-mcp-remote test-alert` from your settings folder to check it works. To choose which alerts you get, see `CANVAS_ALERTS` in [Configuration](#configuration).
 
 Only the computer that is serving sends alerts, and it remembers what it already sent in your Canvas account's own storage, so you don't get repeats when another computer takes over. Alert text passes through ntfy or Discord, so keep the topic or channel private.
 
-## 🔐 Security
+## Security
 
 - **Confirmation gate:** tools that send, submit, post or delete return a preview first and only act when called with `confirm: true`.
 - **Prompt-injection fencing:** text other people wrote is wrapped in `<<<CANVAS_CONTENT>>>` markers and labelled as untrusted.
@@ -233,14 +238,14 @@ Only the computer that is serving sends alerts, and it remembers what it already
 
 > **Never commit** `.env`, `oauth-store.json` or `supervisor.log`. They're already listed in `.gitignore`. See [SECURITY.md](SECURITY.md).
 
-## 🎓 Responsible use
+## Responsible use
 
 This is a study and organization tool. It helps you see deadlines, understand your grades and plan your week. It never takes quizzes, and nothing is sent or submitted until you've seen a preview and confirmed it.
 
 - Follow your school's academic integrity and acceptable-use policies. Some schools restrict personal API tokens or third-party tools.
 - Want zero risk of accidental changes? Set `CANVAS_ALLOW_WRITES=false` for read-only mode.
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -264,6 +269,6 @@ Start-ScheduledTask -TaskName CanvasSupervisor
 
 **Known limits:** a student token can't reach admin endpoints, gradebook history, course analytics or quiz statistics. `smart_search` is a Canvas beta feature and often returns 404.
 
-## 📄 License
+## License
 
 [MIT](LICENSE). This project isn't affiliated with Instructure.

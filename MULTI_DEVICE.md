@@ -1,4 +1,4 @@
-# 🔁 Multi-Device Setup Guide
+# Multi-Device Setup Guide
 
 This guide covers two different things that both count as "multiple devices":
 
@@ -7,7 +7,7 @@ This guide covers two different things that both count as "multiple devices":
 | **[Part 1: Use it from many devices](#part-1-use-it-from-many-devices)** | Your phone, laptop, desktop and web app all reach the **same** server | ~2 minutes |
 | **[Part 2: Host it on several computers](#part-2-host-it-on-several-computers-automatic-failover)** | Two or more computers each run the server. One serves at a time, and another takes over automatically when it turns off or sleeps | ~10 minutes per extra computer |
 
-Finish the main [README setup](README.md#-quick-start) on your **first** computer before starting.
+Finish the main [README setup](README.md#quick-start) on your **first** computer before starting.
 
 ---
 
@@ -25,7 +25,8 @@ If your app syncs connectors to your account, it also shows up in that app's des
 ### Command-line and editor clients
 Add an **HTTP** (Streamable HTTP) MCP server named `canvas` with the URL `https://<your-domain>/mcp`. When the client asks you to authenticate, a browser window opens. Enter your password there.
 
-> 💡 Seeing ngrok's **"You are about to visit…"** page during login is normal on ngrok's free plan. Click **Visit Site**. It only appears in real browsers, never for your AI app's own requests.
+> [!NOTE]
+> Seeing ngrok's **"You are about to visit…"** page during login is normal on ngrok's free plan. Click **Visit Site**. It only appears in real browsers, never for your AI app's own requests.
 
 ---
 
@@ -52,11 +53,11 @@ Add an **HTTP** (Streamable HTTP) MCP server named `canvas` with the URL `https:
 
 | Setting | Same on every computer? | Notes |
 |---|:-:|---|
-| `CANVAS_MCP_PUBLIC_URL` | ✅ **must match** | The one shared ngrok domain |
-| `CANVAS_MCP_CLUSTER_SECRET` | ✅ **must match** | If it doesn't match, the computers reject each other (`403`) |
-| `CANVAS_MCP_PASSWORD` | ✅ **must match** | Otherwise new logins fail whenever the mismatched computer is active |
-| ngrok **account** (authtoken) | ✅ **must match** | A static domain belongs to one ngrok account |
-| `CANVAS_BASE_URL` | ✅ same | Your school |
+| `CANVAS_MCP_PUBLIC_URL` | **Must match** | The one shared ngrok domain |
+| `CANVAS_MCP_CLUSTER_SECRET` | **Must match** | If it doesn't match, the computers reject each other (`403`) |
+| `CANVAS_MCP_PASSWORD` | **Must match** | Otherwise new logins fail whenever the mismatched computer is active |
+| ngrok **account** (authtoken) | **Must match** | A static domain belongs to one ngrok account |
+| `CANVAS_BASE_URL` | Same | Your school |
 | `CANVAS_API_TOKEN` | either | Recommended: a **separate token per computer**, so you can revoke one without breaking the others |
 
 ---
@@ -85,7 +86,8 @@ CANVAS_MCP_PASSWORD=same_password_as_computer_A
 CANVAS_MCP_CLUSTER_SECRET=same_secret_as_computer_A
 ```
 
-> 🔒 **Move secrets carefully.** Type them in, or use a password manager or a USB drive. **Don't** email them, put them in cloud storage, or commit them. If you made a temporary copy to move the file, delete it afterwards.
+> [!IMPORTANT]
+> **Move secrets carefully.** Type them in, or use a password manager or a USB drive. **Don't** email them, put them in cloud storage, or commit them. If you made a temporary copy to move the file, delete it afterwards.
 
 Don't copy `oauth-store.json`. The new computer downloads a fresh copy from the active computer automatically.
 
@@ -98,7 +100,8 @@ ngrok version
 ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
 ```
 
-> ⚠️ **Run `ngrok update`.** The winget package is often too old for ngrok's free plan and fails with `ERR_NGROK_121` (agent version too old). `ngrok version` should report **3.20 or newer**.
+> [!WARNING]
+> **Run `ngrok update`.** The winget package is often too old for ngrok's free plan and fails with `ERR_NGROK_121` (agent version too old). `ngrok version` should report **3.20 or newer**.
 >
 > If `ngrok.exe` isn't at `%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe`, add `CANVAS_MCP_NGROK_PATH=C:\full\path\to\ngrok.exe` to `.env`.
 
@@ -237,7 +240,8 @@ Repeat Steps 1–6 on that computer. There's no limit: one computer is active an
 | The server crashes on the active computer | The supervisor restarts it after 3 s |
 | The supervisor itself crashes | The scheduled task restarts it within a minute (up to 999 times) |
 
-> 💤 **Tip:** someone has to be awake to serve requests. If all your computers are laptops that sleep, the connector is offline until one wakes up. Setting one plugged-in computer to never sleep gives you an always-on primary.
+> [!TIP]
+> Someone has to be awake to serve requests. If all your computers are laptops that sleep, the connector is offline until one wakes up. Setting one plugged-in computer to never sleep gives you an always-on primary.
 
 ---
 

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canvas LMS MCP Server</title>
 <meta name="description" content="A self-hosted MCP server that gives your AI assistant full student access to Canvas LMS: 211 tools, OAuth-protected, works on every device.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Canvas LMS MCP: Remote Edition">
 <meta property="og:description" content="Canvas LMS in your AI assistant on every device. 211 student tools, password-protected, with automatic multi-computer failover.">
@@ -73,7 +74,7 @@ h2{font-size:clamp(1.7rem,3.5vw,2.3rem);letter-spacing:-.025em;margin:8px 0 12px
 
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;box-shadow:var(--shadow)}
-.card .ic{font-size:1.5rem;width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:var(--accent-soft);margin-bottom:12px}
+.card .ic{color:var(--accent);width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:var(--accent-soft);margin-bottom:12px}
 .card h3{margin:0 0 6px;font-size:1.05rem}
 .card p{margin:0;color:var(--muted);font-size:.94rem}
 
@@ -137,14 +138,18 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
 .rule b{display:block;margin-bottom:2px}
 .rule span{color:var(--muted)}
 .demo{display:block;width:100%;max-width:820px;height:auto;margin:44px auto 0;border-radius:16px;box-shadow:var(--shadow)}
+.ico{width:1.15em;height:1.15em;vertical-align:-.2em;flex:none}
+.brand img{border-radius:7px}
+h3 .ico,.rule b .ico{margin-right:7px;color:var(--accent)}
+.card .ic .ico{width:24px;height:24px;vertical-align:0}
 </style>
 </head>
 <body>
 
-<div class="edition">🌐 You're viewing the <b>Remote Edition</b>. Only need it on one computer? <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/">See the simpler Local Edition →</a></div>
+<div class="edition">You're viewing the <b>Remote Edition</b>. Only need it on one computer? <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/">See the simpler Local Edition →</a></div>
 
 <nav><div class="wrap">
-  <a class="brand" href="#">🌐 Canvas MCP <span style="color:var(--accent)">Remote</span></a>
+  <a class="brand" href="#"><img src="icon.png" alt="" width="28" height="28">Canvas MCP <span style="color:var(--accent)">Remote</span></a>
   <div class="links">
     <a href="#compare" class="hide-sm">Remote vs Local</a>
     <a href="#setup" class="hide-sm">Setup</a>
@@ -157,12 +162,12 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <span class="pill">🌐 Remote Edition · <b>211 tools</b> · any device</span>
+  <span class="pill">Remote Edition · <b>211 tools</b> · any device</span>
   <h1>Your entire Canvas,<br><span class="grad">one question away.</span></h1>
   <p class="lede">A self-hosted MCP server that gives your AI assistant full student access to Canvas LMS from your phone, laptop or the web. Always on, password-protected, with automatic failover across your computers.</p>
   <div class="cta">
     <a class="btn primary" href="#setup">Get started →</a>
-    <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.2.0/CanvasMCPInstallerAssistant-Setup-0.3.0.exe">⬇ Windows setup app</a>
+    <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.2.0/CanvasMCPInstallerAssistant-Setup-0.3.0.exe"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Windows setup app</a>
     <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server">★ View on GitHub</a>
   </div>
   <img class="demo" src="demo.svg" width="820" height="520" alt="Example chat: asking what score is needed on the final and what's due this week (sample data)">
@@ -181,7 +186,7 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
   <div class="compare">
     <div class="plan here">
       <span class="badge">You are here</span>
-      <h3>🌐 Remote</h3>
+      <h3><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></svg>Remote</h3>
       <p>Best if you want Canvas everywhere.</p>
       <ul>
         <li>Web, desktop and mobile AI apps</li>
@@ -193,7 +198,7 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
     </div>
     <div class="plan">
       <span class="badge alt">Other edition</span>
-      <h3>💻 Local</h3>
+      <h3><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 20h20l-2-4H4z"/></svg>Local</h3>
       <p>Best if you only need it on one computer.</p>
       <ul>
         <li>Desktop and command-line MCP clients</li>
@@ -212,12 +217,12 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
   <h2>Built for how students actually use Canvas</h2>
   <p class="sub">More than a thin API wrapper. Higher-level tools answer the questions you really have.</p>
   <div class="grid">
-    <div class="card"><div class="ic">📊</div><h3>Grade intelligence</h3><p>What-if scores, “what do I need on the final”, weighted breakdowns and which assignments move your grade most.</p></div>
-    <div class="card"><div class="ic">📅</div><h3>Smart planning</h3><p>Week-ahead view, semester snapshot, study priority ranking and every missing assignment across all courses in one call.</p></div>
-    <div class="card"><div class="ic">📝</div><h3>Safe submissions</h3><p>Submit text, links and files. Every write shows a dry-run preview first and only sends when confirmed.</p></div>
-    <div class="card"><div class="ic">💬</div><h3>Discussions & inbox</h3><p>Pull entire threads in one request, reply, and message instructors with recipient lookup.</p></div>
-    <div class="card"><div class="ic">📁</div><h3>Content & archives</h3><p>Files, pages, modules, lecture captions and a full <code>.imscc</code> course export before access ends.</p></div>
-    <div class="card"><div class="ic">🔁</div><h3>Always on</h3><p>Runs in the background with optional two-computer failover, so the connector stays up when one is off.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V12M10 20V7M16 20V4M22 20H2"/></svg></div><h3>Grade intelligence</h3><p>What-if scores, “what do I need on the final”, weighted breakdowns and which assignments move your grade most.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/><path d="M8 14h3M8 17h3"/></svg></div><h3>Smart planning</h3><p>Week-ahead view, semester snapshot, study priority ranking and every missing assignment across all courses in one call.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><h3>Safe submissions</h3><p>Submit text, links and files. Every write shows a dry-run preview first and only sends when confirmed.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 2V11.5A8.5 8.5 0 0 1 11.5 3h1A8.5 8.5 0 0 1 21 11.5z"/></svg></div><h3>Discussions & inbox</h3><p>Pull entire threads in one request, reply, and message instructors with recipient lookup.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg></div><h3>Content & archives</h3><p>Files, pages, modules, lecture captions and a full <code>.imscc</code> course export before access ends.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5"/><path d="M18.5 15A7 7 0 0 1 6 17l-2-5"/></svg></div><h3>Always on</h3><p>Runs in the background with optional two-computer failover, so the connector stays up when one is off.</p></div>
   </div>
 </div></section>
 
@@ -276,7 +281,7 @@ CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
       <h3>Start it</h3>
 <pre><button class="copy">Copy</button>canvas-lms-mcp-remote</pre>
       <p style="margin-top:10px">From source, run <code>node supervisor.js</code> instead.</p>
-      <p style="margin-top:10px">When the log says <code>active and serving at https://…</code>, it's running. To start it automatically at logon on Windows, see the <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#-quick-start">README</a>.</p>
+      <p style="margin-top:10px">When the log says <code>active and serving at https://…</code>, it's running. To start it automatically at logon on Windows, see the <a href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server#quick-start">README</a>.</p>
     </div></div>
     <div class="step"><div>
       <h3>Connect your AI app, on every device</h3>
@@ -325,9 +330,9 @@ ngrok config add-authtoken &lt;same authtoken as computer A&gt;</pre>
   </div>
 
   <div class="rules">
-    <div class="rule"><b>✅ Must match everywhere</b><span>Public URL, password, cluster secret, ngrok account</span></div>
-    <div class="rule"><b>🔑 Can differ</b><span>Canvas API token (recommended: one per computer)</span></div>
-    <div class="rule"><b>💤 Sleep is handled</b><span>A computer that wakes up after a takeover steps back to standby on its own</span></div>
+    <div class="rule"><b><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>Must match everywhere</b><span>Public URL, password, cluster secret, ngrok account</span></div>
+    <div class="rule"><b><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="5"/><path d="m11.5 11.5 9-9L22 4l-3 3 2 2-3 3-2-2-4.5 4.5"/></svg>Can differ</b><span>Canvas API token (recommended: one per computer)</span></div>
+    <div class="rule"><b><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 20h20l-2-4H4z"/></svg>Sleep is handled</b><span>A computer that wakes up after a takeover steps back to standby on its own</span></div>
   </div>
 
   <div class="cta" style="margin-top:28px">
@@ -383,10 +388,10 @@ ngrok config add-authtoken &lt;same authtoken as computer A&gt;</pre>
   <h2>Safe by design</h2>
   <p class="sub">Your Canvas token never leaves your computer, and your assistant can't act without asking first.</p>
   <div class="grid">
-    <div class="card"><div class="ic">✋</div><h3>Confirmation gate</h3><p>Anything that sends, submits, posts or deletes shows a preview first and needs <code>confirm: true</code>.</p></div>
-    <div class="card"><div class="ic">🛡️</div><h3>Injection fencing</h3><p>Text other people wrote is wrapped in <code>CANVAS_CONTENT</code> markers and labelled as untrusted.</p></div>
-    <div class="card"><div class="ic">🚫</div><h3>No quiz-taking</h3><p>Quiz attempt endpoints are deliberately left out and blocked.</p></div>
-    <div class="card"><div class="ic">🔑</div><h3>OAuth 2.1</h3><p>Login is rate limited, access tokens last 1 hour and refresh tokens are replaced every time they're used.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></div><h3>Confirmation gate</h3><p>Anything that sends, submits, posts or deletes shows a preview first and needs <code>confirm: true</code>.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 20 6v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></div><h3>Injection fencing</h3><p>Text other people wrote is wrapped in <code>CANVAS_CONTENT</code> markers and labelled as untrusted.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg></div><h3>No quiz-taking</h3><p>Quiz attempt endpoints are deliberately left out and blocked.</p></div>
+    <div class="card"><div class="ic"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="5"/><path d="m11.5 11.5 9-9L22 4l-3 3 2 2-3 3-2-2-4.5 4.5"/></svg></div><h3>OAuth 2.1</h3><p>Login is rate limited, access tokens last 1 hour and refresh tokens are replaced every time they're used.</p></div>
   </div>
   <div class="note"><b>Keep private:</b> <code>.env</code>, <code>oauth-store.json</code> and <code>supervisor.log</code>. All three are already listed in <code>.gitignore</code>.</div>
 </div></section>
