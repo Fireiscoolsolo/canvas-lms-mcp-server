@@ -425,7 +425,7 @@ function tool({ name, description, schema = {}, handler, write = false, confirm 
   }, async (args = {}) => {
     try {
       // Offline tools never call Canvas, so they work before the token and URL are set.
-      if (!offline && !TOKEN) return fail('CANVAS_API_TOKEN is not set. Add it to the .env file next to index.js.');
+      if (!offline && !TOKEN) return fail('CANVAS_API_TOKEN is not set. Add it to the .env file next to index.js. On Windows, the free Canvas MCP Installer Assistant can set it up for you: https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/');
       if (!offline && !API) return fail('CANVAS_BASE_URL is not set. Example: https://yourschool.instructure.com');
       if (confirm && args.confirm !== true) {
         const preview = typeof handler.preview === 'function' ? await handler.preview(args) : null;
@@ -1764,7 +1764,7 @@ registerResources(server, { canvas, html2text, fence, ready: () => Boolean(TOKEN
 // ===========================================================================
 
 async function main() {
-  if (!TOKEN) log('WARNING: CANVAS_API_TOKEN is not set. Every tool will return a config error.');
+  if (!TOKEN) log('WARNING: CANVAS_API_TOKEN is not set. Every tool will return a config error. On Windows, the free Canvas MCP Installer Assistant can set it up for you: https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/');
   if (!BASE) log('WARNING: CANVAS_BASE_URL is not set. Every tool will return a config error.');
 
   // Non-blocking startup probe. Never throws; the server must still start so

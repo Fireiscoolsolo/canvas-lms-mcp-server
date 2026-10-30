@@ -34,7 +34,7 @@ if (args.includes('--help') || args.includes('-h') || cmd === 'help') {
     console.log(`.env already exists in ${process.cwd()}, leaving it unchanged.`);
   } else {
     fs.copyFileSync(path.join(PKG_DIR, '.env.example'), target);
-    console.log(`Created ${target}\nFill in your Canvas token, ngrok domain, password and cluster secret, then run: canvas-lms-mcp-remote`);
+    console.log(`Created ${target}\nFill in your Canvas token, ngrok domain, password and cluster secret, then run: canvas-lms-mcp-remote\nOn Windows, the free Canvas MCP Installer Assistant can do all of this for you: https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/`);
   }
 } else if (cmd === 'test-alert') {
   (await import('dotenv')).default.config();
