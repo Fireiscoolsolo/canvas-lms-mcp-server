@@ -7,12 +7,12 @@
     "source": "github"
   },
   "websiteUrl": "https://fireiscoolsolo.github.io/canvas-lms-mcp-server/",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "canvas-lms-mcp-remote",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "transport": {
         "type": "stdio"
       },

@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)**. It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
 
 <div align="center">
 
