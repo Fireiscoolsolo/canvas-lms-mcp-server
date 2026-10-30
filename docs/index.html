@@ -142,6 +142,7 @@ footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font
 .brand img{border-radius:7px}
 h3 .ico,.rule b .ico{margin-right:7px;color:var(--accent)}
 .card .ic .ico{width:24px;height:24px;vertical-align:0}
+.tip{font-size:.88rem;color:var(--muted);margin-top:10px}
 </style>
 </head>
 <body>
@@ -153,6 +154,7 @@ h3 .ico,.rule b .ico{margin-right:7px;color:var(--accent)}
   <div class="links">
     <a href="#compare" class="hide-sm">Remote vs Local</a>
     <a href="#setup" class="hide-sm">Setup</a>
+    <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/" class="hide-sm">Windows app</a>
     <a href="#multi">Multi-PC</a>
     <a href="#tools" class="hide-sm">Tools</a>
     <a href="#security" class="hide-sm">Security</a>
@@ -167,7 +169,7 @@ h3 .ico,.rule b .ico{margin-right:7px;color:var(--accent)}
   <p class="lede">A self-hosted MCP server that gives your AI assistant full student access to Canvas LMS from your phone, laptop or the web. Always on, password-protected, with automatic failover across your computers.</p>
   <div class="cta">
     <a class="btn primary" href="#setup">Get started →</a>
-    <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/releases/download/v1.2.0/CanvasMCPInstallerAssistant-Setup-0.3.4.exe"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Windows setup app</a>
+    <a class="btn" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/download/"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Windows setup app</a>
     <a class="btn" href="https://github.com/Fireiscoolsolo/canvas-lms-mcp-server">★ View on GitHub</a>
   </div>
   <img class="demo" src="demo.svg" width="820" height="520" alt="Example chat: asking what score is needed on the final and what's due this week (sample data)">
@@ -291,6 +293,16 @@ CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
   </div>
 </div></section>
 
+<section id="app"><div class="wrap">
+  <div class="eyebrow">Windows app</div>
+  <h2>Rather click than type?</h2>
+  <p class="sub">The free Canvas MCP Installer Assistant walks you through every step above with pictures and a check after each one. For a one-time $5 it does the whole Remote setup for you: ngrok, your settings, a test run and start at logon. <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/">See screenshots and FAQ →</a></p>
+  <div class="cta" style="justify-content:flex-start">
+    <a class="btn primary" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/download/"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Download for Windows</a>
+    <a class="btn" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/">About the app</a>
+  </div>
+  <p class="tip">Windows may say "Windows protected your PC" because the app isn't code-signed yet. Click <b>More info</b>, then <b>Run anyway</b>.</p>
+</div></section>
 <section id="multi"><div class="wrap">
   <div class="eyebrow">Multiple computers</div>
   <h2>Run it on every computer you own</h2>
