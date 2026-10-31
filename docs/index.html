@@ -203,7 +203,7 @@ h3 .ico,.rule b .ico{margin-right:7px;color:var(--accent)}
       <h3><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 20h20l-2-4H4z"/></svg>Local</h3>
       <p>Best if you only need it on one computer.</p>
       <ul>
-        <li>Desktop and command-line MCP clients</li>
+        <li>Claude Desktop, the ChatGPT desktop app and other MCP clients</li>
         <li>Your AI app starts it automatically</li>
         <li>Nothing exposed to the internet</li>
         <li>Needs only Node.js and a Canvas token</li>
@@ -288,6 +288,7 @@ CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
     <div class="step"><div>
       <h3>Connect your AI app, on every device</h3>
       <p>In your AI app's settings, add a <b>custom connector</b> (also called a <i>remote MCP server</i>) with the URL <code>https://&lt;your-domain&gt;/mcp</code> and log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Then ask your assistant to run <code>test_connection</code>.</p>
+      <p style="margin-top:10px"><b>ChatGPT desktop app:</b> open <b>Settings → Plugins</b>, go to the <b>MCPs</b> tab and click <b>Add → Add MCP server</b>. Choose <b>Streamable HTTP</b>, paste the same URL, add the header <code>ngrok-skip-browser-warning</code> with the value <code>1</code>, and click <b>Save</b>. Then click <b>Authenticate</b> and log in with your password.</p>
       <p style="margin-top:10px">Command-line and editor clients: add an <b>HTTP</b> MCP server named <code>canvas</code> with the same URL.</p>
     </div></div>
   </div>
@@ -296,7 +297,7 @@ CANVAS_MCP_CLUSTER_SECRET=another_long_random_secret</pre>
 <section id="app"><div class="wrap">
   <div class="eyebrow">Windows app</div>
   <h2>Rather click than type?</h2>
-  <p class="sub">The free Canvas MCP Installer Assistant walks you through every step above with pictures and a check after each one. For a one-time $5 it does the whole Remote setup for you: ngrok, your settings, a test run and start at logon. <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/">See screenshots and FAQ →</a></p>
+  <p class="sub">The free Canvas MCP Installer Assistant walks you through every step above with pictures and a check after each one. For a one-time $5 it does the whole Remote setup for you: ngrok, your settings, a test run and start at logon, and it can add Remote to the ChatGPT desktop app in one click. <a href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/">See screenshots and FAQ →</a></p>
   <div class="cta" style="justify-content:flex-start">
     <a class="btn primary" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/download/"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Download for Windows</a>
     <a class="btn" href="https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/">About the app</a>

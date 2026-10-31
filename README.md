@@ -33,7 +33,7 @@
 </div>
 
 > [!TIP]
-> **On Windows? Skip the terminal.** The free **[Canvas MCP Installer Assistant](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/)** sets this up with pictures and a check after every step, or does every step for you. **[Download for Windows](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/download/)**
+> **On Windows? Skip the terminal.** The free **[Canvas MCP Installer Assistant](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/)** sets this up for Claude or the ChatGPT desktop app with pictures and a check after every step, or does every step for you. **[Download for Windows](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/download/)**
 
 <p align="center"><img src="https://fireiscoolsolo.github.io/canvas-lms-mcp-server/demo.svg" width="760" alt="Example chat: asking what score is needed on the final and what's due this week (sample data)"></p>
 
@@ -43,7 +43,7 @@
 
 | | **Remote** (this repo) | [**Local**](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
 |---|---|---|
-| Works with | Any MCP client that supports remote servers, **on any device** | Desktop and command-line MCP clients **on this computer** |
+| Works with | Any MCP client that supports remote servers, **on any device** | Claude Desktop, the ChatGPT desktop app and other MCP clients **on this computer** |
 | When it runs | Always on, in the background | Only while your AI app is open |
 | You need | Node.js, a Canvas token, an ngrok account and a password | Node.js and a Canvas token |
 | Internet exposure | Public HTTPS address, password-protected | None |
@@ -148,6 +148,23 @@ $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDAT
 
 ### 7. Connect your AI app, on every device
 In your AI app's settings, add a **custom connector** (also called a *remote MCP server*) with the URL `https://<your-domain>/mcp`, then log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Command-line and editor clients can add it as an **HTTP** MCP server with the same URL.
+
+<details>
+<summary><b>ChatGPT desktop app</b></summary>
+
+1. Open **Settings → Plugins**, go to the **MCPs** tab, then click **Add → Add MCP server**.
+2. Choose **Streamable HTTP** and fill in the form:
+
+   | Field | Value |
+   |---|---|
+   | Name | `canvas-remote` |
+   | URL | `https://<your-domain>/mcp` |
+   | Headers | `ngrok-skip-browser-warning` = `1` |
+
+3. Click **Save**, then **Authenticate** and log in with your password. Start a **new chat** to use it.
+
+The header skips the page ngrok's free plan shows before your server.
+</details>
 
 Then ask your assistant: **"Run test_connection."**
 
