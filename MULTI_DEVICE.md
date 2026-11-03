@@ -107,7 +107,15 @@ ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
 
 ### Step 4: Start it automatically at logon
 
-Run this in PowerShell **from the repo folder**:
+**Easiest, on Windows, Linux or macOS:** from your settings folder, run
+
+```bash
+canvas-lms-mcp-remote install-service
+```
+
+It creates the startup task (Windows), systemd user service (Linux) or launch agent (macOS), starts it, and writes a `supervisor.log` that rotates at 5 MB. From source, run `node cli.js install-service`. The manual steps below do the same thing by hand.
+
+To set it up by hand on Windows, run this in PowerShell **from the repo folder**:
 
 ```powershell
 $dir      = (Get-Location).Path
@@ -122,7 +130,7 @@ No administrator rights are needed. The task runs as you.
 
 Installed from npm? Replace the `$action` line with:
 ```powershell
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" >> supervisor.log 2>&1' -WorkingDirectory $dir
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" start --log-file supervisor.log' -WorkingDirectory $dir
 ```
 
 > `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, run `node supervisor.js` with launchd or pm2 instead.
@@ -192,7 +200,9 @@ Then confirm the public address answers:
 Invoke-RestMethod https://<your-domain>/healthz -Headers @{ 'ngrok-skip-browser-warning' = '1' }
 ```
 
-Expected: `ok: True`, `tools: 211`, `auth_enabled: True`.
+Expected: `ok: True`, `tools: 237`, `auth_enabled: True`.
+
+`canvas-lms-mcp-remote cluster` (from any computer's settings folder) lists every computer and which one is serving, and the status page at `https://<your-domain>/status` shows the same. To move serving to the computer you're on, run `canvas-lms-mcp-remote takeover`. To make failover faster or slower, set `CANVAS_MCP_FAILOVER_SECONDS` (default 50) in every computer's `.env`.
 
 ### Step 6: Test failover in both directions
 

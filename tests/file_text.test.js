@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { extractFileText, kindOf, officeXmlText } from '../file-text.js';
+import { extractFileText, kindOf, officeXmlText } from '../core/file-text.js';
 
 /** The smallest valid PDF with one line of text, with correct cross-reference offsets. */
 function tinyPdf(line) {

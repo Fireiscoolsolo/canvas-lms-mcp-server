@@ -1,8 +1,8 @@
 // Tool documentation applied when tools are registered: clearer descriptions, parameter
-// explanations and annotation overrides. Edit the text here rather than in index.js.
+// explanations and annotation overrides. Edit the text here rather than in the tool files.
 
 // Placeholder descriptions that COMMON_PARAMS may replace.
-const GENERIC = new Set(['Canvas ID (numeric string)', 'Canvas course ID', 'Max items to return']);
+const GENERIC = new Set(['Canvas ID (numeric string)', 'Canvas course ID', 'Max items to return', 'Page of results']);
 
 // Shared explanations for parameters that appear on many tools.
 export const COMMON_PARAMS = {
@@ -27,7 +27,8 @@ export const COMMON_PARAMS = {
   export_id: 'Content export ID returned by create_content_export.',
   tool_id: 'External tool ID (numeric string). Get it from list_external_tools.',
   media_id: 'Media object ID, e.g. "m-abc123". Get it from list_media_objects.',
-  limit: 'Maximum number of items to return. Smaller is faster.',
+  limit: 'Maximum number of items to return (one page of results). Smaller is faster.',
+  page: 'Which page of results to show, starting at 1. Use it when a result says there are more.',
   search_term: 'Optional text filter on names or titles (at least 2 characters, case-insensitive).',
   dest_dir: 'Local folder to save into. Defaults to the server\'s download folder (CANVAS_DOWNLOAD_DIR).',
   file_path: 'Absolute path of the local file to upload, e.g. "C:/Users/me/essay.pdf".',
@@ -307,16 +308,21 @@ export const TOOL_DOCS = {
   get_all_unread: { description: 'Get every unread item in one call: inbox messages, discussion replies, announcements and activity stream items. Read-only; nothing is marked as read.' },
   course_health_check: { description: 'Get a full status check for one course: current grade, missing and ungraded work, upcoming deadlines and unread discussions. Read-only. Use semester_snapshot for all courses at once.' },
   semester_snapshot: { description: 'Get every active course in one call with its grade, missing work, upcoming deadlines and unread counts. Read-only but uses many API calls; best at the start of a session. Use course_health_check for one course.' },
-  diff_since_last_check: { description: 'List what changed since a given time: newly posted grades, announcements, discussion replies and inbox messages, from your activity stream. Read-only.' },
+  diff_since_last_check: { description: 'List what changed since a given time, or since the last time you asked: newly posted grades, announcements, discussion replies and inbox messages, from your activity stream. Read-only apart from remembering when you last checked, so "what\'s new?" works without a date.' },
   syllabus_digest: { description: 'Pull a course syllabus and extract lines that look like dates, grade weights or policies. Read-only. A rough text heuristic; read the full text with get_syllabus.' },
   deadline_conflict_check: { description: 'Find days in the next N days where several assignments are due at once, weighted by points, so you can spot pileups early. Read-only.' },
   study_priority_ranking: { description: 'Rank everything due soon across all courses by a priority score that combines grade impact, urgency and how weak your standing is in that course. Read-only. The formula is included so you can judge it.' },
   download_all_course_files: { description: 'Download every file you can access in a course to local disk, up to max_files (default 50). Writes local files only; nothing changes in Canvas. Can take many requests and a lot of disk space; use download_file for one file.', params: { content_types: 'Optional MIME types to include, e.g. ["application/pdf"]. Omit for every file.' } },
   export_course_archive: { description: 'Export a whole course, wait for Canvas to package it, then download the .imscc archive to local disk. Nothing in the course changes. Can take several minutes; use it before a term ends and access disappears.' },
 
+  // ---- confirm-gated but not destructive: they only add things for you, so the app can say so ----
+  export_all_courses: { annotations: { destructiveHint: false } },
+  schedule_study_plan: { annotations: { destructiveHint: false } },
+  update_notification_preference: { annotations: { destructiveHint: false, idempotentHint: true } },
+
   // ---- meta ----
   raw_canvas_request: { description: 'Call any Canvas REST API endpoint directly, for anything the other tools don\'t cover. GET is read-only. POST, PUT and DELETE can change data: they are blocked when CANVAS_ALLOW_WRITES=false, need confirm=true, and quiz-submission writes are always refused.', params: { max_items: 'With paginate=true, stop after this many items. Default 200.' }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false } },
-  search_tools: { description: 'Search this server\'s tools by keyword and return matching names with one-line descriptions. Read-only, makes no Canvas calls and works before a token is set. Use it to find the right tool among the 200+ available.', params: { query: 'Keyword to look for in tool names and descriptions, e.g. "grade". Omit to list everything.', group: 'Optional group: identity, courses, assignments, submissions, grades, quizzes, discussions, inbox, calendar, content, groups, rubrics, search, planning or meta.' } },
+  search_tools: { description: 'Search this server\'s tools by keyword and return matching names with one-line descriptions. Read-only, makes no Canvas calls and works before a token is set. Use it to find the right tool among the 200+ available.', params: { query: 'Keyword to look for in tool names and descriptions, e.g. "grade". Omit to list everything.', group: 'Optional group: identity, courses, assignments, submissions, grades, quizzes, discussions, inbox, calendar, content, groups, rubrics, search, planner, planning or meta.' } },
   test_connection: { description: 'Check the token, school URL and access end to end: identity, courses, planner, inbox and missing submissions, and report any features your school disabled. Read-only. Run this first if anything fails.' },
   get_server_config: { description: 'Show this server\'s settings (school URL, profile, write mode, cache, time zone, download folder) and whether a token is present, without revealing it. Read-only, makes no Canvas calls and works before a token is set, so use it first to diagnose setup problems.' },
 };

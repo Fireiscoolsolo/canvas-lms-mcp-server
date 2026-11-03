@@ -83,4 +83,88 @@ export function registerPrompts(server, { listCourseNames }) {
     '4. Use list_modules to see where the class is in the material.',
     'Summarize what is going on in a few lines, then give me a short to-do list in order of urgency.',
   ].join('\n')));
+
+  server.registerPrompt('daily_briefing', {
+    title: 'Daily briefing',
+    description: 'Today at a glance: classes, what is due today and tomorrow, new grades and anything you should read.',
+  }, () => say([
+    'Give me my Canvas briefing for today.',
+    '1. Use daily_briefing.',
+    '2. Lead with anything due today, then tomorrow, with the time each is due.',
+    '3. Mention new grades (with the score), unread announcements worth reading, and how many unread messages I have.',
+    '4. If there is missing work, list it and say which piece to do first.',
+    'Keep it short enough to read in 30 seconds.',
+  ].join('\n')));
+
+  server.registerPrompt('plan_study_blocks', {
+    title: 'Plan my study blocks',
+    description: 'Study time blocks for the next two weeks, fitted around your calendar, that you can add to Canvas.',
+    argsSchema: {
+      hours: z.string().optional().describe('Study hours each day, e.g. "16:00-21:00". Default 4 pm to 9 pm.'),
+      days: z.string().optional().describe('How many days ahead to plan. Default 14.'),
+    },
+  }, ({ hours, days }) => {
+    const [start, end] = String(hours || '').split('-').map((s) => s.trim());
+    return say([
+      `Plan study blocks for the next ${Number(days) > 0 ? Number(days) : 14} days.`,
+      `1. Use study_plan${start && end ? ` with day_start "${start}" and day_end "${end}"` : ''}.`,
+      '2. Show the plan day by day with times, and point out anything that did not fit.',
+      '3. Ask me whether to adjust anything (hours, days off, estimates).',
+      '4. Once I agree, use schedule_study_plan to add the blocks to my Canvas calendar.',
+    ].join('\n'));
+  });
+
+  server.registerPrompt('start_assignment', {
+    title: 'Start this assignment',
+    description: 'Everything about one assignment in plain words: what to do, how it is graded, what to submit and a plan to finish on time.',
+    argsSchema: {
+      course: course('The course the assignment is in'),
+      assignment: z.string().describe('The assignment name, or part of it'),
+    },
+  }, ({ course: c, assignment }) => say([
+    `Help me start "${assignment}" in ${c}.`,
+    '1. Find the course with list_courses and the assignment with list_assignments (search_term helps).',
+    '2. Use assignment_brief for the instructions, rubric, due date, late policy and linked files. Read linked files with read_course_file if they matter.',
+    '3. Explain in plain words what I have to produce and how it will be graded, criterion by criterion.',
+    '4. Give me a checklist of steps with a rough time for each, finishing before the due date.',
+    'Do not write the assignment for me; help me understand and plan it.',
+  ].join('\n')));
+
+  server.registerPrompt('on_track_to_pass', {
+    title: 'Am I on track to pass?',
+    description: 'Checks every course for risk: current grades, missing work and what you need on the rest to pass.',
+    argsSchema: { passing: z.string().optional().describe('The lowest passing percentage. Default 60.') },
+  }, ({ passing }) => say([
+    `Am I on track to pass all my courses (passing is ${Number(passing) > 0 ? Number(passing) : 60}%)?`,
+    '1. Use get_all_grades and list_missing_submissions.',
+    '2. For any course near or below passing, use final_grade_scenarios to see the average I need on the remaining work.',
+    '3. Give me a table: course, current grade, missing items, needed average, and a verdict (safe, watch, at risk).',
+    '4. For each at-risk course, list the two most useful things to do this week.',
+  ].join('\n')));
+
+  server.registerPrompt('email_professor', {
+    title: 'Draft an email to my professor',
+    description: 'A short, polite Canvas message to a teacher about an extension, a grade question or anything else. You review it before anything is sent.',
+    argsSchema: {
+      course: course('The course'),
+      about: z.string().describe('What the message is about, e.g. "asking for a 2-day extension on Lab 4 because I was sick"'),
+    },
+  }, ({ course: c, about }) => say([
+    `Help me write a Canvas message to my teacher in ${c} about: ${about}`,
+    '1. Find the course with list_courses and the teacher with course_contacts.',
+    '2. If it is about an assignment or grade, look it up (assignment_brief or get_my_submission) so the message has the right names and dates.',
+    '3. Draft a short, polite message: a clear subject, the request in the first two sentences, any context, and thanks.',
+    '4. Show me the draft and wait. Only send it with send_message after I say it is good.',
+  ].join('\n')));
+
+  server.registerPrompt('semester_wrap_up', {
+    title: 'Semester wrap-up',
+    description: 'End-of-term checklist: final grades, anything still missing, and saving your course files before access ends.',
+  }, () => say([
+    'Help me wrap up the semester.',
+    '1. Use semester_wrap_up for every course: grades, missing work, what is still due and when each course ends.',
+    '2. List what I still need to finish, soonest course end first.',
+    '3. Point out any grade that looks worth asking the teacher about.',
+    '4. Offer to save copies of my courses with export_all_courses (or download_all_course_files for one course), and do it only if I say yes.',
+  ].join('\n')));
 }

@@ -1,4 +1,4 @@
-// Pure grade math used by the grade tools in index.js. No Canvas calls here, so it can be unit tested.
+// Pure grade math used by the grade tools in core/tools/grades.js. No Canvas calls here, so it can be unit tested.
 
 const isGraded = (s) => s && s.score !== null && s.score !== undefined && s.workflow_state === 'graded';
 
@@ -128,4 +128,94 @@ export function calculateGpa(rows, { credits, defaultCredits = 3, whatIf, extraP
     excluded,
     note: credits ? undefined : `Every course counts as ${defaultCredits} credits. Pass credits per course for an exact GPA.`,
   };
+}
+
+const DEFAULT_CUTOFFS = [['A', 90], ['B', 80], ['C', 70], ['D', 60]];
+
+/** Letter cutoffs from a Canvas grading standard ({ grading_scheme: [{ name, value }] }), highest first. */
+export function cutoffsFromStandard(standard) {
+  const scheme = standard?.grading_scheme || standard?.data;
+  if (!Array.isArray(scheme) || !scheme.length) return DEFAULT_CUTOFFS;
+  return scheme
+    .map((s) => (Array.isArray(s) ? [s[0], Number(s[1]) * 100] : [s.name, Number(s.value) * 100]))
+    .filter(([name, min]) => name && Number.isFinite(min) && min > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, min]) => [name, Number(min.toFixed(2))]);
+}
+
+/**
+ * What-if scenarios for a whole course, with assignment-group weights applied (groups with nothing in them drop
+ * out and the others are rescaled, as Canvas does). Drop-lowest rules are not applied.
+ *   - projected final grade if you average 100/90/80/70/60% on everything not graded yet
+ *   - the average you need on the remaining work for each letter grade
+ */
+export function calculateScenarios(groups, { cutoffs = DEFAULT_CUTOFFS, levels = [100, 90, 80, 70, 60] } = {}) {
+  const weighted = groups.some((g) => Number(g.group_weight) > 0);
+  const gs = groups.map((g) => {
+    let earned = 0, graded = 0, remaining = 0, remainingCount = 0;
+    for (const asg of g.assignments || []) {
+      if (asg.omit_from_final_grade || asg.published === false) continue;
+      const pts = Number(asg.points_possible || 0);
+      const s = asg.submission;
+      if (s?.excused) continue;
+      if (isGraded(s)) { earned += Number(s.score); graded += pts; }
+      else if (pts > 0) { remaining += pts; remainingCount++; }
+    }
+    return { name: g.name, weight: Number(g.group_weight || 0), earned, graded, remaining, remainingCount };
+  });
+
+  // final(s) = projected percent if every remaining point is scored at fraction s. It is linear in s.
+  const final = (s) => {
+    if (weighted) {
+      let sum = 0, w = 0;
+      for (const g of gs) {
+        const total = g.graded + g.remaining;
+        if (total <= 0 || g.weight <= 0) continue;
+        sum += g.weight * ((g.earned + s * g.remaining) / total);
+        w += g.weight;
+      }
+      return w > 0 ? (sum / w) * 100 : null;
+    }
+    const e = gs.reduce((t, g) => t + g.earned, 0), p = gs.reduce((t, g) => t + g.graded, 0), r = gs.reduce((t, g) => t + g.remaining, 0);
+    return p + r > 0 ? ((e + s * r) / (p + r)) * 100 : null;
+  };
+  const current = (() => {
+    if (weighted) {
+      let sum = 0, w = 0;
+      for (const g of gs) if (g.graded > 0 && g.weight > 0) { sum += g.weight * (g.earned / g.graded); w += g.weight; }
+      return w > 0 ? (sum / w) * 100 : null;
+    }
+    const e = gs.reduce((t, g) => t + g.earned, 0), p = gs.reduce((t, g) => t + g.graded, 0);
+    return p > 0 ? (e / p) * 100 : null;
+  })();
+
+  const remainingPoints = gs.reduce((t, g) => t + g.remaining, 0);
+  const at0 = final(0), at1 = final(1);
+  const round = (n) => (n === null ? null : Number(n.toFixed(2)));
+  const needed = cutoffs.map(([letter, min]) => {
+    if (at0 === null) return { letter, min_percent: min, required_average_percent: null, verdict: 'No graded or remaining work to project from.' };
+    if (remainingPoints <= 0 || at1 === at0) return { letter, min_percent: min, required_average_percent: null, verdict: at0 >= min ? 'Already locked in.' : 'Out of reach: no work left that can change the grade.' };
+    const need = ((min - at0) / (at1 - at0)) * 100;
+    return {
+      letter, min_percent: min, required_average_percent: round(Math.max(0, need)),
+      verdict: need <= 0 ? 'Already secured, even with zeros on the rest.' : need > 100 ? 'Out of reach, even with perfect scores.' : need > 95 ? 'Possible, but needs near-perfect work.' : 'Reachable.',
+    };
+  });
+
+  return {
+    weighting: weighted ? 'weighted by assignment group' : 'total points',
+    current_percent: round(current),
+    remaining_points: remainingPoints,
+    remaining_items: gs.reduce((t, g) => t + g.remainingCount, 0),
+    if_you_average: levels.map((l) => ({ average_on_remaining_percent: l, projected_final_percent: round(final(l / 100)), projected_letter: letterFor(final(l / 100), cutoffs) })),
+    to_get_each_letter: needed,
+    groups: gs.map((g) => ({ group: g.name, weight: weighted ? g.weight : undefined, earned: g.earned, graded_points: g.graded, remaining_points: g.remaining })),
+    caveat: 'Drop-lowest rules and extra credit are not applied, and ungraded work is assumed to count. For Canvas\'s own math on one score, use what_if_grade.',
+  };
+}
+
+function letterFor(pct, cutoffs) {
+  if (pct === null) return null;
+  const hit = cutoffs.find(([, min]) => pct >= min);
+  return hit ? hit[0] : `below ${cutoffs[cutoffs.length - 1]?.[0] || 'D'}`;
 }

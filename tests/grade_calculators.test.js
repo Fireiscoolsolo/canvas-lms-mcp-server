@@ -7,7 +7,7 @@ import {
   calculateNeededScore,
   formatWhatIfGrade,
   letterFromPercent
-} from '../grade-calculators.js';
+} from '../core/grade-calculators.js';
 
 test('calculates weighted grade contribution', () => {
   const groups = [{

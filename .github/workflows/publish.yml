@@ -1,0 +1,42 @@
+# Publish a release from GitHub Actions instead of a terminal: npm with provenance (the "verified" badge on
+# npmjs.com), then the MCP Registry, both signed in through GitHub, so there is no token to type or renew.
+#
+# One-time setup on npmjs.com: package settings > Trusted publishing > GitHub Actions, repository
+# Fireiscoolsolo/canvas-lms-mcp-server, workflow file publish.yml. Then run this from the Actions tab
+# (Run workflow) after the version bump is pushed. Publishing from a terminal still works as before.
+name: Publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+      - name: Wait until npm lists the new version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do
+            npm view "canvas-lms-mcp-remote@$VERSION" version && exit 0
+            sleep 20
+          done
+          echo "npm still doesn't list $VERSION; publish to the MCP Registry by hand later." && exit 1
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

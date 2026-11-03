@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Fireiscoolsolo/canvas-lms-mcp-server",
-  "description": "Self-hosted Canvas LMS for students on every device: OAuth, ngrok tunnel, multi-PC failover.",
+  "description": "Self-hosted Canvas LMS for every device: 237 student tools over HTTP with OAuth and phone alerts.",
   "repository": {
     "url": "https://github.com/Fireiscoolsolo/canvas-lms-mcp-server",
     "source": "github"
   },
   "websiteUrl": "https://fireiscoolsolo.github.io/canvas-lms-mcp-server/",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "canvas-lms-mcp-remote",
-      "version": "1.2.3",
+      "version": "1.3.0",
       "transport": {
         "type": "stdio"
       },

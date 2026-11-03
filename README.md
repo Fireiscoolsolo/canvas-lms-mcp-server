@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 211 tools, with no ngrok, no password and about 5 minutes of setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 237 tools, with no tunnel, no password and a one-command setup.
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
-211 tools · OAuth 2.1 · ngrok tunnel · Multi-computer failover
+237 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
 
 [![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
@@ -28,7 +28,7 @@
 [![Website](https://img.shields.io/badge/docs-website-orange)](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/Fireiscoolsolo/canvas-lms-mcp-server/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
-[Website](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/) · [Quick start](#quick-start) · [**Multi-device guide**](MULTI_DEVICE.md) · [Configuration](#configuration) · [Tools](#tools) · [Security](#security)
+[Website](https://fireiscoolsolo.github.io/canvas-lms-mcp-server/) · [Quick start](#quick-start) · [**Multi-device guide**](MULTI_DEVICE.md) · [Configuration](#configuration) · [Tools](#tools) · [Phone alerts](#phone-alerts) · [Security](#security) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -45,20 +45,20 @@
 |---|---|---|
 | Works with | Any MCP client that supports remote servers, **on any device** | Claude Desktop, the ChatGPT desktop app and other MCP clients **on this computer** |
 | When it runs | Always on, in the background | Only while your AI app is open |
-| You need | Node.js, a Canvas token, an ngrok account and a password | Node.js and a Canvas token |
+| You need | Node.js (or Docker), a Canvas token, an ngrok or Cloudflare account and a password | Node.js and a Canvas token |
 | Internet exposure | Public HTTPS address, password-protected | None |
 | Multiple computers | Automatic failover ([guide](MULTI_DEVICE.md)) | Install it separately on each one |
 
 ## Highlights
 
-- **Grade intelligence**: `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa`, full weighted breakdowns
-- **Planning**: `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, cross-course missing work in one call
-- **Submissions**: submit text, URLs and files, with a dry-run preview first
-- **Discussions & inbox**: read whole threads in one request and message instructors
-- **Content**: read lecture PDFs, Word docs and slides with `read_course_file`, plus pages, modules, captions and full `.imscc` course export
-- **Prompts and attachments**: one-click prompts like *Plan my week* and *Prep me for an exam*, and attach a syllabus or assignment to a chat
-- **Phone alerts**: new grades, announcements, work due soon and an expiring token, sent to your phone or Discord
-- **Secure remote access**: password-gated OAuth 2.1 over an ngrok tunnel
+- **Your day and week**: `daily_briefing`, `get_week_ahead`, `semester_snapshot`, planner notes, checking items off your To Do list
+- **Study plans**: `study_plan` spreads study time before each deadline; `schedule_study_plan` puts it on your Canvas calendar
+- **Grade intelligence**: `final_grade_scenarios`, `what_if_grade`, `grade_impact_ranking`, `calculate_gpa`, full weighted breakdowns
+- **Assignments, submissions, discussions and inbox**: `assignment_brief` in one call; submit, post and message after a preview
+- **Content**: read lecture PDFs, Word docs and slides with `read_course_file`; downloads come back as links your phone can open
+- **Phone alerts**: new grades, announcements, work due soon, new assignments, teacher comments, messages and more, by ntfy, Discord, Telegram, Slack, Teams or Pushover, instantly or as a daily digest
+- **Status page**: see from any browser whether your server is online, who is signed in, and sign apps out
+- **Secure remote access**: password-gated OAuth 2.1 with lockout, a login history and optional two-factor codes, over an ngrok or Cloudflare tunnel
 - **Multi-computer failover**: run it on two or more computers, and if one sleeps, another takes over in about a minute
 
 ## How it works
@@ -68,8 +68,8 @@
           │  HTTPS + OAuth
           ▼
    your-domain.ngrok-free.dev ──►  supervisor.js  ──►  index.js (127.0.0.1:3939/mcp)  ──►  Canvas API
-                                   (keeps it alive,     (211 tools, OAuth,
-                                    failover)            rate-limit aware)
+   (or a Cloudflare hostname)      (keeps it alive,     (237 tools, OAuth, status page,
+                                    failover)            phone alerts)
 ```
 
 ## Quick start
@@ -79,7 +79,7 @@
 >
 > Windows may show "Windows protected your PC" because the app isn't code-signed yet. Click **More info**, then **Run anyway**.
 
-**You need:** [Node.js 18+](https://nodejs.org), a Canvas account and a free [ngrok](https://ngrok.com) account.
+**You need:** [Node.js 18+](https://nodejs.org) (22+ to read PDFs), a Canvas account and a free [ngrok](https://ngrok.com) account (or a [Cloudflare](https://www.cloudflare.com) account with your own domain). Prefer containers? See [Docker](#docker).
 
 ### 1. Install
 **With npm (easiest):**
@@ -99,23 +99,48 @@ That folder is your **settings folder**. It holds your `.env`, logins and logs, 
 | Command | What it does |
 |---|---|
 | `canvas-lms-mcp-remote init` | Create a `.env` template in the current folder |
-| `canvas-lms-mcp-remote` | Start the supervisor: server, ngrok tunnel and failover |
+| `canvas-lms-mcp-remote` | Start the supervisor: server, tunnel and failover |
 | `canvas-lms-mcp-remote serve` | Start only the HTTP server on `127.0.0.1` (no tunnel) |
+| `canvas-lms-mcp-remote install-service` | Start it automatically when you sign in (Windows, Linux or macOS) |
+| `canvas-lms-mcp-remote uninstall-service` | Stop starting it automatically |
+| `canvas-lms-mcp-remote stop` / `restart` | Stop the running supervisor, or stop and start it again |
+| `canvas-lms-mcp-remote status` | Is it running, which computer is serving, who is signed in |
+| `canvas-lms-mcp-remote logs [-f]` | Show the end of `supervisor.log` (`-f` keeps following it) |
+| `canvas-lms-mcp-remote doctor` | Check settings, token, tunnel and startup service, and say how to fix problems |
+| `canvas-lms-mcp-remote test-alert` | Send a test phone alert |
+| `canvas-lms-mcp-remote sessions [sign-out <id> \| sign-out-all \| tidy]` | List or sign out connected apps |
+| `canvas-lms-mcp-remote rotate-password` | Make a new password and sign every app out |
+| `canvas-lms-mcp-remote totp-setup` / `totp-off` | Turn two-factor codes on or off |
+| `canvas-lms-mcp-remote cluster` | List the computers in your group |
+| `canvas-lms-mcp-remote takeover` | Make this computer the one that serves |
+| `canvas-lms-mcp-remote uninstall` | Stop it, remove the startup service and say how to remove the package |
 | `canvas-lms-mcp-remote --stdio` | Serve over stdin/stdout, for directories that inspect servers |
 
-From source, use `node supervisor.js` and `node index.js` instead.
+From source, use `node cli.js <command>` instead.
 </details>
 
 ### 2. Create a Canvas token
 In Canvas, go to **Account → Settings → Approved Integrations → + New Access Token**. Canvas only shows the token once, so copy it right away.
 
-### 3. Set up ngrok
+### 3. Set up a tunnel
+**ngrok (default):**
 ```powershell
 winget install --id Ngrok.Ngrok -e
 ngrok update                                   # the winget version is often too old (ERR_NGROK_121)
 ngrok config add-authtoken <your-ngrok-authtoken>
 ```
 Then claim your free **static domain** in the [ngrok dashboard](https://dashboard.ngrok.com), e.g. `your-name.ngrok-free.dev`.
+
+<details>
+<summary><b>Or Cloudflare Tunnel (no "Visit Site" page, your own domain)</b></summary>
+
+1. Install `cloudflared` ([downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/); on Windows `winget install --id Cloudflare.cloudflared`).
+2. In the Cloudflare dashboard, open **Zero Trust → Networks → Tunnels**, create a tunnel and copy its **token**.
+3. Add a **public hostname** to the tunnel, e.g. `canvas.yourdomain.com`, pointing at `http://localhost:3939`.
+4. In `.env`, set `CANVAS_MCP_TUNNEL=cloudflared`, `CANVAS_MCP_CLOUDFLARED_TOKEN=<token>` and `CANVAS_MCP_PUBLIC_URL=https://canvas.yourdomain.com`.
+
+Using your own reverse proxy or Tailscale Funnel instead? Set `CANVAS_MCP_TUNNEL=none` and point it at port 3939.
+</details>
 
 ### 4. Configure `.env`
 Fill in the `.env` that `init` created. From source, copy `.env.example` to `.env` first. Generate the password and secret with:
@@ -125,12 +150,20 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 ### 5. Test it
 ```bash
+canvas-lms-mcp-remote doctor
 canvas-lms-mcp-remote
 ```
-From source, run `node supervisor.js` instead.
-Wait until you see `active and serving at https://…`, then press Ctrl+C.
+`doctor` checks your settings, token and tunnel first. Then wait until you see `active and serving at https://…`, and press Ctrl+C.
 
-### 6. Run it automatically at logon (Windows)
+### 6. Run it automatically when you sign in
+```bash
+canvas-lms-mcp-remote install-service
+```
+On Windows this creates the `CanvasSupervisor` scheduled task, on Linux a systemd user service, and on macOS a launch agent. All of them restart it if it crashes and write `supervisor.log` in your settings folder, rotating it at 5 MB.
+
+<details>
+<summary><b>Setting up the Windows task by hand</b></summary>
+
 In PowerShell, **from your settings folder** (the repo folder, if you installed from source):
 ```powershell
 $dir      = (Get-Location).Path
@@ -140,11 +173,8 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New
 Register-ScheduledTask -TaskName CanvasSupervisor -Action $action -Trigger $trigger -Settings $settings -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
 ```
-**Installed from npm?** Use this `$action` line instead:
-```powershell
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" >> supervisor.log 2>&1' -WorkingDirectory $dir
-```
-`run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, run it as a systemd user service ([example](MULTI_DEVICE.md#linux-run-it-as-a-systemd-user-service)). On macOS, run `node supervisor.js` under launchd or pm2.
+`run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file.
+</details>
 
 ### 7. Connect your AI app, on every device
 In your AI app's settings, add a **custom connector** (also called a *remote MCP server*) with the URL `https://<your-domain>/mcp`, then log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Command-line and editor clients can add it as an **HTTP** MCP server with the same URL.
@@ -168,11 +198,27 @@ The header skips the page ngrok's free plan shows before your server.
 
 Then ask your assistant: **"Run test_connection."**
 
+## Status page
+
+Open **`https://<your-domain>/status`** in any browser and enter your password. It shows whether the server is online and which computer is serving, your Canvas connection and when the token expires, the apps that are signed in (each with a **Sign out** button), recent sign-ins, the computers in your group, your phone-alert settings and recent problems. Nothing secret is ever shown, and the page locks itself after 12 hours.
+
+From a terminal, `canvas-lms-mcp-remote status` and `canvas-lms-mcp-remote sessions` show the same things.
+
 ## Multiple computers
 
 You can run the same server on two or more computers, for example a desktop and a laptop, so it stays online when one is off or asleep. One computer serves; the others wait in standby and take over automatically.
 
-**Follow the step-by-step [Multi-Device Setup Guide](MULTI_DEVICE.md).** It covers copying settings safely, the shared ngrok account, the scheduled task, checking it works, testing failover, updating code and changing secrets.
+**Follow the step-by-step [Multi-Device Setup Guide](MULTI_DEVICE.md).** It covers copying settings safely, the shared tunnel, the startup service, checking it works, testing failover, updating code and changing secrets. `canvas-lms-mcp-remote cluster` lists the computers, and `canvas-lms-mcp-remote takeover` moves serving to the computer you're on.
+
+## Docker
+
+For a home server or NAS: copy `.env.example` to `.env`, fill it in, add `NGROK_AUTHTOKEN=<your ngrok authtoken>`, then:
+
+```bash
+docker compose up -d
+```
+
+[`docker-compose.yml`](docker-compose.yml) runs the server and an ngrok tunnel, keeping your logins in a Docker volume. It also has a commented-out Cloudflare Tunnel service to use instead. One container serves, so there's no failover between computers in this setup; Docker restarts it if it stops.
 
 ## Configuration
 
@@ -182,71 +228,93 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 |---|:-:|---|---|
 | `CANVAS_API_TOKEN` | Yes | — | Your Canvas personal access token |
 | `CANVAS_BASE_URL` | Yes | — | e.g. `https://yourschool.instructure.com` |
-| `CANVAS_MCP_PUBLIC_URL` | Yes | — | Your ngrok static domain |
-| `CANVAS_MCP_PASSWORD` | Yes | — | Password for the OAuth login page |
+| `CANVAS_MCP_PUBLIC_URL` | Yes | — | Your public address (ngrok static domain or Cloudflare hostname) |
+| `CANVAS_MCP_PASSWORD` | Yes | — | Password for the login and status pages |
 | `CANVAS_MCP_CLUSTER_SECRET` | Yes | — | Secret that protects the `/internal/*` endpoints the computers use to coordinate |
+| `CANVAS_MCP_TOTP_SECRET` | | — | Turns on two-factor codes; set it up with `canvas-lms-mcp-remote totp-setup` |
+| `CANVAS_MCP_TUNNEL` | | `ngrok` | `ngrok`, `cloudflared`, or `none` if you route the address yourself |
+| `CANVAS_MCP_CLOUDFLARED_TOKEN` | | — | Tunnel token from the Cloudflare dashboard |
+| `CANVAS_MCP_FAILOVER_SECONDS` | | `50` | How long the serving computer can be silent before another takes over |
 | `CANVAS_ALLOW_WRITES` | | `true` | `false` = read-only mode |
 | `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools |
+| `CANVAS_TOOLS` / `CANVAS_DISABLE_TOOLS` | | all / — | Only these tool groups or tools, or leave these out |
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
-| `CANVAS_TIMEZONE` | | system | IANA time zone for due-date math |
+| `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
 | `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
 | `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
+| `CANVAS_MCP_TRUST_PROXY` | | `loopback` | Which proxy's visitor address to trust; Docker uses `uniquelocal` |
 | `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
-| `CANVAS_ALERTS_NTFY_TOPIC` | | — | ntfy topic for [phone alerts](#phone-alerts). Treat it like a password |
-| `CANVAS_ALERTS_DISCORD_WEBHOOK` | | — | Discord webhook URL for [phone alerts](#phone-alerts) |
-| `CANVAS_ALERTS` | | all | Which alerts to send: `grades,announcements,due,token` |
-| `CANVAS_ALERTS_DUE_HOURS` | | `24` | How far ahead "due soon" alerts look |
-| `CANVAS_ALERTS_INTERVAL_MINUTES` | | `15` | How often to check for alerts (at least 5) |
-| `CANVAS_ALERTS_NTFY_SERVER` | | `https://ntfy.sh` | Your own ntfy server, if you run one |
+
+Phone-alert settings are listed in [Phone alerts](#phone-alerts).
 
 ## Tools
 
 | Group | Count | Highlights |
 |---|:-:|---|
-| Identity | 25 | `check_token_expiry`, `get_rate_limit_status`, custom-data storage |
-| Courses | 16 | permissions, nicknames, favorites |
-| Assignments | 12 | `list_missing_submissions`, `get_late_policy` |
-| Submissions | 16 | text, URL and file submission, comments, rubric assessments |
-| Grades | 14 | `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa` |
+| Identity | 27 | `check_token_expiry`, notification preferences, custom-data storage |
+| Courses | 17 | `course_contacts` (teachers, TAs, office hours), permissions, nicknames |
+| Assignments | 13 | `assignment_brief`, `list_missing_submissions`, `get_late_policy` |
+| Submissions | 17 | text, URL, file and annotation submission, comments, rubric assessments |
+| Grades | 15 | `final_grade_scenarios`, `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa` |
 | Quizzes | 12 | read-only: dates, attempts, reviews |
-| Discussions | 17 | `get_full_topic_view`, replies, ratings |
+| Discussions | 21 | `get_full_topic_view`, replies, school-wide announcements, mark announcements read |
 | Inbox | 14 | messaging, `find_recipients`, threads |
 | Calendar | 11 | events, office-hours booking |
-| Content | 34 | files, pages, modules, captions, `read_course_file` for PDF, Word and PowerPoint, `.imscc` export |
+| Content | 36 | files, pages, modules, captions, ePortfolios, `read_course_file` for PDF, Word and PowerPoint, course export |
 | Groups | 11 | group workspaces |
 | Rubrics | 11 | peer reviews |
 | Search | 3 | `smart_search` with keyword fallback |
-| Planning | 11 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking` |
+| Planner | 12 | `daily_briefing`, planner notes, `mark_planner_item_done`, `study_plan`, `export_deadlines_ics`, calendar feed |
+| Planning | 13 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, `semester_wrap_up`, `export_all_courses` |
 | Meta | 4 | `raw_canvas_request` for any endpoint not listed above |
 
 ### Prompts and attachments
 
 The server also adds these to your AI app's menus. They don't count as tools.
 
-- **Prompts**: *Plan my week*, *What did I miss?*, *Prep me for an exam*, *How are my grades?* and *Catch me up on a course*. Each one tells the assistant which tools to use, and course names autocomplete.
+- **Prompts**: *Daily briefing*, *Plan my week*, *Plan my study blocks*, *What did I miss?*, *Start this assignment*, *Prep me for an exam*, *How are my grades?*, *Am I on track to pass?*, *Catch me up on a course*, *Draft an email to my professor* and *Semester wrap-up*. Each one tells the assistant which tools to use, and course names autocomplete.
 - **Attachments**: attach a course syllabus, or an assignment due in the next 14 days, to a chat the same way you'd attach a file.
 
 Apps that support MCP prompts and resources, such as Claude Desktop, show them in the **+** menu.
 
 ## Phone alerts
 
-Because the Remote Edition is always on, it can tell you when something happens:
+Because the Remote Edition is always on, it can tell you when something happens. On by default once you set a channel:
 
 - **New grades** (several at once arrive as one summary)
 - **New announcements**
 - **Work due within 24 hours** that you haven't submitted yet
 - **A Canvas token that expires within 5 days**
 
-Alerts are off until you choose where they go. Add one or both to `.env`, then restart the server:
+Add any of these to `CANVAS_ALERTS` to turn them on too: `assignments` (new assignments, quizzes and discussions), `comments` (a teacher commented on your work), `inbox` (new messages), `grade_drop` (a course grade fell below `CANVAS_ALERTS_GRADE_BELOW`, default 70%) and `security` (sign-ins and lockouts on your server).
 
-- **Phone app:** install the free [ntfy](https://ntfy.sh) app, subscribe to a long, hard-to-guess topic name (it works like a password), and set `CANVAS_ALERTS_NTFY_TOPIC` to it.
-- **Discord:** in a private Discord server, open a channel's **Settings → Integrations → Webhooks**, create one and set `CANVAS_ALERTS_DISCORD_WEBHOOK` to its URL.
+**Where they go.** Add any of these to `.env`, then restart the server:
 
-Then run `canvas-lms-mcp-remote test-alert` from your settings folder to check it works. To choose which alerts you get, see `CANVAS_ALERTS` in [Configuration](#configuration).
+| Channel | Settings |
+|---|---|
+| [ntfy](https://ntfy.sh) phone app | `CANVAS_ALERTS_NTFY_TOPIC`: a long, hard-to-guess topic name (it works like a password). `CANVAS_ALERTS_NTFY_SERVER` for your own server |
+| Discord | `CANVAS_ALERTS_DISCORD_WEBHOOK`: a webhook from a channel's **Settings → Integrations → Webhooks** |
+| Telegram | `CANVAS_ALERTS_TELEGRAM_TOKEN` (from @BotFather) and `CANVAS_ALERTS_TELEGRAM_CHAT_ID` |
+| Slack | `CANVAS_ALERTS_SLACK_WEBHOOK`: an incoming webhook URL |
+| Microsoft Teams | `CANVAS_ALERTS_TEAMS_WEBHOOK`: a Workflows incoming webhook URL |
+| Pushover | `CANVAS_ALERTS_PUSHOVER_TOKEN` and `CANVAS_ALERTS_PUSHOVER_USER` |
 
-Only the computer that is serving sends alerts, and it remembers what it already sent in your Canvas account's own storage, so you don't get repeats when another computer takes over. Alert text passes through ntfy or Discord, so keep the topic or channel private.
+**When they come.**
+
+| Setting | Default | What it does |
+|---|---|---|
+| `CANVAS_ALERTS_DIGEST` | — | One summary a day at this time, e.g. `07:30`: what's due today and tomorrow, new grades, missing work and unread messages |
+| `CANVAS_ALERTS_MODE` | `both` with a digest | `digest` sends only urgent alerts (due soon, token, security) in between digests; `instant` turns the digest off |
+| `CANVAS_ALERTS_QUIET` | — | e.g. `22:00-07:00`: non-urgent alerts wait until the morning and arrive as one summary |
+| `CANVAS_ALERTS_COURSES` / `_SKIP_COURSES` | all | Only (or never) these courses, by ID or part of the name |
+| `CANVAS_ALERTS_DUE_HOURS` | `24` | How far ahead "due soon" alerts look |
+| `CANVAS_ALERTS_INTERVAL_MINUTES` | `15` | How often to check (at least 5) |
+
+Then run `canvas-lms-mcp-remote test-alert` from your settings folder to check it works.
+
+Only the computer that is serving sends alerts, and it remembers what it already sent in your Canvas account's own storage, so you don't get repeats when another computer takes over. Alert text passes through the service you pick, so keep the topic, channel or chat private.
 
 ## Security
 
@@ -254,10 +322,14 @@ Only the computer that is serving sends alerts, and it remembers what it already
 - **Prompt-injection fencing:** text other people wrote is wrapped in `<<<CANVAS_CONTENT>>>` markers and labelled as untrusted.
 - **No quiz-taking:** quiz attempt endpoints are deliberately not included.
 - **Loopback only:** the server listens on `127.0.0.1`. The only way in from outside is the tunnel.
-- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per IP, access tokens last 1 hour, and refresh tokens are replaced every time they're used.
+- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per address, and five wrong passwords lock that address out for 15 minutes. Access tokens last 1 hour, and refresh tokens are replaced every time they're used. The password check takes the same time whatever you type.
+- **Two-factor codes (optional):** `canvas-lms-mcp-remote totp-setup` adds a code from your authenticator app to the login and status pages.
+- **You can see and end sign-ins:** the status page lists signed-in apps and recent sign-in attempts. Unused apps are signed out after 90 days, and `rotate-password` signs everyone out.
 - **Separate coordination secret:** the endpoints the computers use to coordinate need a separate shared secret, compared in constant time.
+- **No secrets in logs:** tokens, passwords and webhook keys are removed from every log line. The public `/healthz` check says nothing about your account.
+- **Download links expire:** files the server saves are shared through private links that work for one hour.
 
-> **Never commit** `.env`, `oauth-store.json` or `supervisor.log`. They're already listed in `.gitignore`. See [SECURITY.md](SECURITY.md).
+> **Never commit** `.env`, `oauth-store.json`, `login-history.json` or `supervisor.log`. They're already listed in `.gitignore`. See [SECURITY.md](SECURITY.md).
 
 ## Responsible use
 
@@ -268,19 +340,22 @@ This is a study and organization tool. It helps you see deadlines, understand yo
 
 ## Troubleshooting
 
+Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks the settings, token, tunnel, server and startup service, and says how to fix what it finds.
+
 | Symptom | Fix |
 |---|---|
 | `ERR_NGROK_121` | Your ngrok version is too old. Run `ngrok update` |
 | `ERR_NGROK_334 … already online` | Another computer or a leftover `ngrok.exe` holds the domain. This is normal for a standby computer |
-| `ERR_NGROK_3200` (endpoint offline) | No computer is serving. Check `supervisor.log` |
-| ngrok shows a "You are about to visit…" page at login | This is normal on the free plan. Click **Visit Site** |
-| `startup probe failed` | Check `CANVAS_BASE_URL` and your internet connection |
-| Canvas returns 401 | Your token expired. Create a new one |
+| `ERR_NGROK_3200` (endpoint offline) | No computer is serving. Check `canvas-lms-mcp-remote logs` |
+| ngrok shows a "You are about to visit…" page at login | This is normal on the free plan. Click **Visit Site**, or use Cloudflare Tunnel, which has no such page |
+| `startup check failed` | Check `CANVAS_BASE_URL` and your internet connection |
+| "Your Canvas token was rejected" | Your token expired. Create a new one and put it in `.env` |
 | New tools don't show up | Reconnect the connector or restart your AI app |
+| `supervisor.log` keeps growing | Run `canvas-lms-mcp-remote install-service` again to switch to the rotating log |
 
 More issues with several computers are covered in the [Multi-Device guide](MULTI_DEVICE.md#troubleshooting).
 
-**Restart cleanly.** `Stop-ScheduledTask` alone can leave processes running:
+**Restart cleanly** with `canvas-lms-mcp-remote restart`. Running an older version that doesn't know it? In PowerShell:
 ```powershell
 Stop-ScheduledTask -TaskName CanvasSupervisor -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'supervisor\.js|index\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
@@ -288,7 +363,7 @@ Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
 ```
 
-**Known limits:** a student token can't reach admin endpoints, gradebook history, course analytics or quiz statistics. `smart_search` is a Canvas beta feature and often returns 404.
+**Known limits:** a student token can't reach admin endpoints, gradebook history, course analytics or quiz statistics. `smart_search` is a Canvas beta feature and often returns 404. While the server is reached over the tunnel, apps get a preview before actions instead of a pop-up confirmation.
 
 ## License
 

@@ -1,0 +1,23 @@
+// Quizzes, read only. Registered by core/index.js; ctx carries the shared client, helpers and config.
+// Deliberately excluded: start_quiz_submission, answer_quiz_question and complete_quiz_submission. Those
+// endpoints exist in the Canvas API; they are not exposed here by design.
+import { z } from 'zod';
+
+export default function register(ctx) {
+  const { get, ID, COURSE, LIMIT, API } = ctx;
+
+  const F = 'quizzes';
+
+  get({ name: 'list_quizzes', group: F, description: 'Quizzes in a course with due dates, time limits, attempt allowances and point values.', path: (a) => `/courses/${a.course_id}/quizzes`, schema: { course_id: COURSE, search_term: z.string().optional(), limit: LIMIT }, params: (a) => ({ search_term: a.search_term }), paginate: true, fields: ['id', 'title', 'quiz_type', 'due_at', 'lock_at', 'unlock_at', 'time_limit', 'allowed_attempts', 'points_possible', 'question_count', 'published', 'html_url', 'shuffle_answers', 'hide_results', 'one_question_at_a_time', 'cant_go_back'] });
+  get({ name: 'get_quiz', group: F, description: 'Full detail for one quiz including instructions, timing rules and result visibility settings.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}`, schema: { course_id: COURSE, quiz_id: ID }, fenceFields: ['description'] });
+  get({ name: 'get_my_quiz_submission', group: F, description: 'Your submission record for a quiz: score, attempt number, state, and timing.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/submission`, schema: { course_id: COURSE, quiz_id: ID }, params: () => ({ include: ['submission', 'quiz', 'user'] }) });
+  get({ name: 'list_my_quiz_submissions', group: F, description: 'All of your attempts on a quiz, with scores per attempt.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/submissions`, schema: { course_id: COURSE, quiz_id: ID }, params: () => ({ include: ['submission', 'quiz'] }) });
+  get({ name: 'get_quiz_submission_time', group: F, description: 'Time remaining and end time on an in-progress timed quiz attempt.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/submissions/${a.submission_id}/time`, schema: { course_id: COURSE, quiz_id: ID, submission_id: ID } });
+  get({ name: 'list_quiz_questions', group: F, description: 'Questions on a quiz. Canvas hides these from students unless the quiz is completed and the instructor allows reviewing answers, so this commonly returns 401/empty. Intended for post-hoc review of a graded quiz.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/questions`, schema: { course_id: COURSE, quiz_id: ID, quiz_submission_id: z.string().optional() }, params: (a) => ({ quiz_submission_id: a.quiz_submission_id }), paginate: true, fenceFields: ['question_text', 'correct_comments', 'incorrect_comments', 'neutral_comments'] });
+  get({ name: 'get_quiz_extensions', group: F, description: 'Extra time or extra attempts granted to you on a quiz (accommodations).', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/extensions`, schema: { course_id: COURSE, quiz_id: ID } });
+  get({ name: 'get_quiz_ip_filters', group: F, description: 'IP address restrictions on a quiz (used for proctored/lab-only exams).', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/ip_filters`, schema: { course_id: COURSE, quiz_id: ID } });
+  get({ name: 'get_quiz_assignment_overrides', group: F, description: 'Per-section or per-student due date overrides on quizzes in a course.', path: (a) => `/courses/${a.course_id}/quizzes/assignment_overrides`, schema: { course_id: COURSE, quiz_assignment_overrides: z.array(z.string()).optional() }, params: (a) => ({ 'quiz_assignment_overrides[][quiz_ids]': a.quiz_assignment_overrides }) });
+  get({ name: 'list_new_quizzes', group: F, description: 'New Quizzes (Quiz LTI) in a course. New Quizzes is a separate service from Classic Quizzes and may not be enabled at your institution.', path: (a) => `/courses/${a.course_id}/quizzes`, schema: { course_id: COURSE }, params: () => ({ include: ['all_dates'] }), paginate: true, fields: ['id', 'title', 'quiz_type', 'due_at', 'points_possible', 'question_count'] });
+  get({ name: 'get_new_quiz', group: F, description: 'Detail for a New Quizzes assessment via the Quiz LTI API path.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}`, schema: { course_id: COURSE, quiz_id: ID } });
+  get({ name: 'get_new_quiz_items', group: F, description: 'Items (questions) in a New Quizzes assessment. Requires instructor scope at most institutions.', path: (a) => `/courses/${a.course_id}/quizzes/${a.quiz_id}/items`, schema: { course_id: COURSE, quiz_id: ID }, paginate: true });
+}

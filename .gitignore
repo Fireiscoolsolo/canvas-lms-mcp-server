@@ -1,6 +1,11 @@
 node_modules/
 .env
-oauth-store.json
-supervisor.log
 canvas-downloads/
+oauth-store.json
+login-history.json
 alerts-state.json
+supervisor-state.json
+state.json
+*.log
+*.log.*
+*.flag

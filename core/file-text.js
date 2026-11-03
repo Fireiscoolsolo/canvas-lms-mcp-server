@@ -1,7 +1,8 @@
 // Turns Canvas course files (PDF, Word, PowerPoint and plain text) into text the assistant can read.
 // Pure functions over the downloaded bytes, so they can be unit tested without Canvas.
-import JSZip from 'jszip';
-import { extractText, getDocumentProxy } from 'unpdf';
+// The PDF and Office readers are large, so they load the first time a file needs them, not at server start.
+const loadZip = async () => (await import('jszip')).default;
+const loadPdf = () => import('unpdf');
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -35,7 +36,7 @@ export function officeXmlText(xml, runTag, paraTag) {
 }
 
 async function docxText(buf) {
-  const zip = await JSZip.loadAsync(buf);
+  const zip = await (await loadZip()).loadAsync(buf);
   const xml = await zip.file('word/document.xml')?.async('string');
   if (!xml) throw new Error("This Word file doesn't contain a readable document.");
   return officeXmlText(xml, 'w:t', 'w:p');
@@ -44,7 +45,7 @@ async function docxText(buf) {
 const slideNumber = (name) => Number((name.match(/(\d+)\.xml$/) || [])[1] || 0);
 
 async function pptxText(buf) {
-  const zip = await JSZip.loadAsync(buf);
+  const zip = await (await loadZip()).loadAsync(buf);
   const slides = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => slideNumber(a) - slideNumber(b));
   const out = [];
   for (const [i, name] of slides.entries()) {
@@ -60,6 +61,7 @@ async function pptxText(buf) {
 }
 
 async function pdfText(buf) {
+  const { extractText, getDocumentProxy } = await loadPdf();
   const pdf = await getDocumentProxy(new Uint8Array(buf));
   const { text } = await extractText(pdf, { mergePages: false });
   return text.map((t, i) => `--- Page ${i + 1} ---\n${String(t).trim()}`).join('\n\n');

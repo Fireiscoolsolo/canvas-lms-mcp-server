@@ -10,10 +10,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         node: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -23,3 +24,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: No known high-severity problems in what users install
+        run: npm audit --omit=dev --audit-level=high
+      - name: The Docker image builds and answers its health check
+        run: |
+          docker build -t canvas-remote-test .
+          docker run -d --name canvas-test -e CANVAS_API_TOKEN=x -e CANVAS_BASE_URL=https://canvas.example.edu -p 3939:3939 canvas-remote-test
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:3939/healthz && exit 0; sleep 2; done
+          docker logs canvas-test; exit 1
