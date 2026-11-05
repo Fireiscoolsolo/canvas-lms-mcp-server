@@ -12,6 +12,7 @@
 //   CANVAS_TIMEZONE        IANA time zone for dates. Default: this computer's
 //   CANVAS_DOWNLOAD_DIR    Where download tools save files
 //   CANVAS_MAX_RESPONSE_CHARS  Longest answer a tool returns before it is cut, in characters. Default: 100000
+//   CANVAS_IP_FAMILY       4 or 6 uses only that kind of address. Default: both
 import fs from 'node:fs';
 import { normalizeBase } from './canvas-client.js';
 import { readStoredToken, storeName } from './token-store.js';
@@ -42,6 +43,8 @@ export function resolveToken(env = process.env, { readStore = readStoredToken } 
   return { token: '', tokenSource: 'none' };
 }
 
+export const ipFamilyFrom = (env = process.env) => (['4', '6'].includes(String(env.CANVAS_IP_FAMILY).trim()) ? Number(env.CANVAS_IP_FAMILY) : null);
+
 export function readConfig(env = process.env, { defaultDownloadDir, readStore } = {}) {
   const base = normalizeBase(env.CANVAS_BASE_URL);
   return {
@@ -56,5 +59,6 @@ export function readConfig(env = process.env, { defaultDownloadDir, readStore } 
     tz: env.CANVAS_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
     downloadDir: env.CANVAS_DOWNLOAD_DIR || defaultDownloadDir,
     maxChars: Math.max(5000, Number(env.CANVAS_MAX_RESPONSE_CHARS) || 100000),
+    ipFamily: ipFamilyFrom(env),
   };
 }

@@ -51,8 +51,11 @@ import os from 'node:os';
 import dotenv from 'dotenv';
 import { createRotatingLog } from './log-file.js';
 import { redact } from './core/text.js';
+import { ipFamilyFrom } from './core/config.js';
+import { applyNetworkSettings } from './core/network.js';
 
 dotenv.config({ quiet: true });
+applyNetworkSettings({ ipFamily: ipFamilyFrom() });
 
 const DIR = process.cwd(); // settings folder: .env, oauth-store.json and logs live here
 const PKG_DIR = path.dirname(fileURLToPath(import.meta.url)); // where index.js lives (differs from DIR when installed from npm)
@@ -147,13 +150,18 @@ async function callInternal(pathname, { method = 'GET', body, timeoutMs = 6000 }
     return { ok: true, data };
   } catch (e) {
     clearTimeout(timer);
-    return { ok: false, error: e.message };
+    return { ok: false, error: e.cause?.code ? `${e.message} (${e.cause.code})` : e.message };
   }
 }
 
-/** Heartbeat to the active computer (which lists us on its status page); older versions only know /internal/whoami. */
+/**
+ * Heartbeat to the active computer (which lists us on its status page); older versions only know /internal/whoami.
+ * A lost connection gets one quick retry, so a blip here doesn't count towards deciding the other computer has gone.
+ */
 async function checkActive() {
-  const hb = await callInternal('/internal/heartbeat', { method: 'POST', body: { hostname: os.hostname(), state, version: VERSION } });
+  const send = () => callInternal('/internal/heartbeat', { method: 'POST', body: { hostname: os.hostname(), state, version: VERSION } });
+  let hb = await send();
+  if (hb.error) { await sleep(2000); hb = await send(); }
   if (hb.ok || hb.status !== 404) return hb;
   return callInternal('/internal/whoami');
 }

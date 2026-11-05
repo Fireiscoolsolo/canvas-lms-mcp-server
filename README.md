@@ -241,6 +241,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
 | `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
 | `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files |
+| `CANVAS_IP_FAMILY` | | both | `4` or `6` uses only that kind of address. Worth trying if new connections time out |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
 | `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
@@ -340,7 +341,7 @@ This is a study and organization tool. It helps you see deadlines, understand yo
 
 ## Troubleshooting
 
-Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks the settings, token, tunnel, server and startup service, and says how to fix what it finds.
+Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks the settings, token, network, tunnel, server and startup service, and says how to fix what it finds.
 
 | Symptom | Fix |
 |---|---|
@@ -350,6 +351,8 @@ Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks
 | ngrok shows a "You are about to visit…" page at login | This is normal on the free plan. Click **Visit Site**, or use Cloudflare Tunnel, which has no such page |
 | `startup check failed` | Check `CANVAS_BASE_URL` and your internet connection |
 | "Your Canvas token was rejected" | Your token expired. Create a new one and put it in `.env` |
+| Reading works but uploads or new connections time out | Run `doctor` on that computer: its Network section times DNS and tests every connection. The server works around a slow DNS lookup by itself, so if a connection still fails, look for a VPN, proxy or firewall |
+| "File not found on the computer running this server" | The server reads files from its own disk, so the path must exist on the computer named in the error, not the one you're chatting from |
 | New tools don't show up | Reconnect the connector or restart your AI app |
 | `supervisor.log` keeps growing | Run `canvas-lms-mcp-remote install-service` again to switch to the rotating log |
 

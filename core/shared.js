@@ -1,8 +1,11 @@
 // Helpers and field lists used by more than one tool group: uploads, downloads and common Canvas fields.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CanvasError } from './canvas-client.js';
+import { CanvasError, fetchWithRetry, hostOf } from './canvas-client.js';
+
+const TRANSFER_TIMEOUT_MS = 10 * 60000;
 
 export const FIELDS = {
   COURSE_FIELDS: ['id', 'name', 'course_code', 'workflow_state', 'start_at', 'end_at', 'term', 'enrollments', 'total_students', 'time_zone', 'public_description'],
@@ -37,19 +40,38 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
   /** Canvas file upload is a 3-step handshake: request slot -> POST to storage -> confirm. */
   async function uploadFile(endpoint, filePath, extra = {}) {
     const abs = path.resolve(filePath);
-    if (!fs.existsSync(abs)) throw new CanvasError(`File not found: ${abs}`);
+    if (!fs.existsSync(abs)) throw new CanvasError(`File not found on the computer running this server (${os.hostname()}): ${abs}`);
     const stat = fs.statSync(abs);
     const name = path.basename(abs);
-    const slot = await canvas.post(endpoint, { name, size: stat.size, content_type: 'application/octet-stream', on_duplicate: 'rename', ...extra });
+    // Says which step failed and on which host, never the full address: upload URLs carry signed parameters.
+    const failedAt = (n, step, host, e) => new CanvasError(`Upload failed at step ${n} of 3 (${step} on ${host}): ${e.message}`, { status: e.status, code: e.code, attempts: e.attempts, host, step });
+
+    // Nothing is submitted until the file is attached to a submission, so steps 1 and 2 are safe to repeat.
+    let slot;
+    try {
+      slot = await canvas.post(endpoint, { name, size: stat.size, content_type: 'application/octet-stream', on_duplicate: 'rename', ...extra }, undefined, { repeatable: true });
+    } catch (e) { throw failedAt(1, 'slot request', hostOf(cfg.base), e); }
     if (!slot?.upload_url) throw new CanvasError('Canvas did not return an upload URL. The assignment may not accept file uploads.');
-    const form = new FormData();
-    for (const [k, v] of Object.entries(slot.upload_params || {})) form.append(k, String(v));
-    form.append('file', new Blob([fs.readFileSync(abs)]), name);
-    const up = await fetchImpl(slot.upload_url, { method: 'POST', body: form, redirect: 'follow' });
-    if (!up.ok) throw new CanvasError(`File upload to storage failed with ${up.status}.`);
+
+    const bytes = fs.readFileSync(abs);
+    const body = () => {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(slot.upload_params || {})) form.append(k, String(v));
+      form.append('file', new Blob([bytes]), name);
+      return form;
+    };
+    const storageHost = hostOf(slot.upload_url);
+    let up;
+    try {
+      up = await fetchWithRetry(fetchImpl, slot.upload_url, () => ({ method: 'POST', body: body(), redirect: 'follow' }), { base: cfg.base, timeoutMs: TRANSFER_TIMEOUT_MS });
+    } catch (e) { throw failedAt(2, 'storage upload', storageHost, e); }
+    if (!up.ok) throw failedAt(2, 'storage upload', storageHost, { message: `the storage server answered HTTP ${up.status}.`, status: up.status });
+
     let confirmed = null;
+    let confirmError = null;
     try { confirmed = await up.json(); } catch { /* some backends 3xx to a confirm URL */ }
-    if (!confirmed?.id && up.url) { try { confirmed = (await canvas.raw('GET', up.url)).data; } catch { /* ignore */ } }
+    if (!confirmed?.id && up.url) { try { confirmed = (await canvas.raw('GET', up.url)).data; } catch (e) { confirmError = e; } }
+    if (!confirmed?.id && confirmError) throw failedAt(3, 'confirm', hostOf(up.url), confirmError);
     if (!confirmed?.id) throw new CanvasError('Upload completed but Canvas did not confirm a file ID.');
     return confirmed;
   }
@@ -74,7 +96,7 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
 
   /** Fetch a Canvas file URL with the token, with a timeout. Throws a readable error on failure. */
   async function fetchFile(url) {
-    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${cfg.token}` }, signal: AbortSignal.timeout(10 * 60000) });
+    const res = await fetchWithRetry(fetchImpl, url, () => ({ headers: { Authorization: `Bearer ${cfg.token}` } }), { base: cfg.base, timeoutMs: TRANSFER_TIMEOUT_MS });
     if (!res.ok) throw new CanvasError(`Download failed (HTTP ${res.status}). The file may be locked, deleted, or no longer shared with you.`);
     return res;
   }

@@ -7,6 +7,8 @@ import { readEnv } from './env-file.js';
 import { serviceInfo } from './service.js';
 import { matchToken, daysLeft } from './core/token-watch.js';
 import { normalizeBase } from './core/canvas-client.js';
+import { ipFamilyFrom } from './core/config.js';
+import { applyNetworkSettings, checkConnections, reportConnections } from './core/network.js';
 
 const REQUIRED = {
   CANVAS_API_TOKEN: 'your Canvas token (Canvas > Account > Settings > + New Access Token)',
@@ -27,7 +29,7 @@ function ngrokAuthConfigured(env = process.env) {
   return files.some((f) => { try { return /^\s*authtoken:\s*\S+/m.test(fs.readFileSync(f, 'utf8')); } catch { return false; } });
 }
 
-export async function runDoctor({ dir, version, fetchImpl = fetch, service = serviceInfo }) {
+export async function runDoctor({ dir, version, fetchImpl = fetch, service = serviceInfo, network = checkConnections }) {
   let problems = 0;
   const good = (m) => console.log(`  ✔ ${m}`);
   const bad = (m, fix) => { problems++; console.log(`  ✖ ${m}${fix ? `\n      Fix: ${fix}` : ''}`); };
@@ -41,6 +43,7 @@ export async function runDoctor({ dir, version, fetchImpl = fetch, service = ser
     console.log(`\n${problems} problem found.`);
     return 1;
   }
+  applyNetworkSettings({ ipFamily: ipFamilyFrom(env) });
   for (const [k, what] of Object.entries(REQUIRED)) {
     if (!env[k] || /paste_your|choose_a|generate_a|your-domain|yourschool/.test(env[k])) bad(`${k} is not set`, `Add ${what} to .env.`);
   }
@@ -66,6 +69,11 @@ export async function runDoctor({ dir, version, fetchImpl = fetch, service = ser
         else if (d !== null) note(`The token expires in ${Math.ceil(d)} days.`);
       }
     } catch (e) { bad(`Couldn't reach ${base} (${e.cause?.code || e.message})`, 'Check your internet connection and CANVAS_BASE_URL.'); }
+  }
+
+  if (base.startsWith('https:')) {
+    console.log('\nNetwork:');
+    await reportConnections(base, { good, bad }, network);
   }
 
   console.log('\nTunnel:');

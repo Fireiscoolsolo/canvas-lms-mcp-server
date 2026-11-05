@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { ElicitResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
-import { CanvasError } from './canvas-client.js';
+import { CanvasError, hideAddresses } from './canvas-client.js';
 import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, DEFAULT_PAGE_SIZE } from './format.js';
 import { applyFence, fenceComments } from './text.js';
 
@@ -52,9 +52,16 @@ export function confirmMessage(name, preview) {
   return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
 }
 
-export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '' }) {
+export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {} }) {
   const registry = [];
   let skipped = 0;
+
+  /** Failures go in the log too, so they can still be traced after the chat is gone. Hosts only, never full addresses. */
+  function logFailure(name, e) {
+    const facts = Object.entries({ step: e.step, host: e.host, code: e.code, attempts: e.attempts })
+      .filter(([, v]) => v).map(([k, v]) => `${k}=${/\s/.test(v) ? `"${v}"` : v}`);
+    log(`${new Date().toISOString()} tool failed: ${[name, ...facts].join(' ')}: ${hideAddresses(e.message).replace(/\s+/g, ' ').slice(0, 300)}`);
+  }
 
   const ID = z.string().describe('Canvas ID (numeric string)');
   const COURSE = z.string().describe('Canvas course ID');
@@ -164,6 +171,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         }
         return finish(await handler(args, io));
       } catch (e) {
+        logFailure(name, e);
         if (e instanceof CanvasError) return fail(e.message);
         return fail(`${name} failed: ${e.message}`);
       }

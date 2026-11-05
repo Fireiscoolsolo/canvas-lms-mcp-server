@@ -33,7 +33,8 @@ const SINGULAR = /\/(self|profile|settings|quota|summary|todo_item_count|unread_
 
 /**
  * fetch() replacement. `calls` collects every request as { method, path, body } so tests can check what was sent.
- * `override(method, pathname)` may return a { status, body } to change the answer for one path.
+ * `override(method, pathname)` may return a { status, body } to change the answer for one path, or { error } to fail
+ * the way a lost connection does.
  */
 export function fakeFetch({ calls = [], override } = {}) {
   return async (url, opts = {}) => {
@@ -42,6 +43,7 @@ export function fakeFetch({ calls = [], override } = {}) {
     const p = u.pathname.replace(/^\/api\/v1/, '');
     calls.push({ method, path: p, query: u.search, body: opts.body ? (typeof opts.body === 'string' ? JSON.parse(opts.body) : '[form]') : undefined });
     const custom = override?.(method, p, u);
+    if (custom?.error) throw custom.error;
     if (custom) return new Response(typeof custom.body === 'string' ? custom.body : JSON.stringify(custom.body), { status: custom.status || 200, headers: { 'content-type': 'application/json', ...(custom.headers || {}) } });
     if (/\/files\/\d+\/download$|\.ics$/.test(p)) return new Response('Hello from a file', { status: 200, headers: { 'content-type': 'text/plain' } });
     if (method !== 'GET') return new Response(JSON.stringify({ ...sample('99'), marked_complete: true }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -54,12 +56,12 @@ export function fakeFetch({ calls = [], override } = {}) {
 }
 
 /** A server on the fake Canvas plus a connected in-memory client. */
-export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit } = {}) {
+export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-mcp-test-'));
   const built = createCanvasServer({
     env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...env },
     version: 'test', defaultDownloadDir: path.join(dir, 'downloads'), stateDir: path.join(dir, 'state'),
-    fetchImpl: fakeFetch({ calls, override }), elicitation,
+    fetchImpl: fakeFetch({ calls, override }), elicitation, ...(log ? { log } : {}),
   });
   const client = new Client({ name: 'test', version: '0' }, { capabilities: clientCapabilities });
   if (onElicit) {

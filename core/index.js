@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { readConfig } from './config.js';
 import { CanvasClient, CanvasError, sleep } from './canvas-client.js';
+import { applyNetworkSettings } from './network.js';
 import { html2text, fence, applyFence, fenceComments, hasFenceMarkers, redact } from './text.js';
 import { ok, fail, pick, omitEmpty, iso, daysFromNow, makeDates, addLocalDates } from './format.js';
 import { createRegistry } from './registry.js';
@@ -61,12 +62,13 @@ export function createCanvasServer({
   const hidden = [cfg.token, ...secrets];
   const safeLog = (...parts) => log(redact(parts.join(' '), hidden));
 
+  applyNetworkSettings(cfg);
   const canvas = new CanvasClient({ api: cfg.api, token: cfg.token, ttl: cfg.cacheTtl, base: cfg.base, ...(fetchImpl ? { fetchImpl } : {}) });
   const server = new McpServer({ name: SERVER_NAME, version }, { instructions: INSTRUCTIONS });
   const dates = makeDates(cfg.tz);
   const tokenWatch = createTokenWatch({ canvas, token: cfg.token, base: cfg.base, log: safeLog });
   const state = createStateStore(stateDir);
-  const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp });
+  const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog });
   const shared = createShared({ canvas, cfg, dates, fileLink, ...(fetchImpl ? { fetchImpl } : {}) });
 
   /** Refuse to SEND text that still carries fence markers: quoted Canvas content was passed through unfiltered. */
@@ -101,6 +103,7 @@ export function createCanvasServer({
     if (cfg.tokenError) safeLog(`WARNING: ${cfg.tokenError}`);
     else if (!cfg.token) safeLog(`WARNING: CANVAS_API_TOKEN is not set. Every Canvas tool will return a setup error. ${missingTokenHelp}`.trim());
     if (!cfg.base) safeLog('WARNING: CANVAS_BASE_URL is not set. Every Canvas tool will return a setup error.');
+    if (cfg.ipFamily) safeLog(`using IPv${cfg.ipFamily} addresses only (CANVAS_IP_FAMILY)`);
     if (ready()) {
       canvas.get('/users/self', null, { ttl: 0 })
         .then((me) => safeLog(`connected as ${me.name} (id ${me.id}) at ${cfg.base}`))

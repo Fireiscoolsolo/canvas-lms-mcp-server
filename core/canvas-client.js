@@ -5,12 +5,16 @@
 //   - Errors are written for people: what happened and how to fix it, not a status code and a stack trace.
 
 export class CanvasError extends Error {
-  constructor(message, { status, url, body } = {}) {
+  constructor(message, { status, url, body, code, host, attempts, step } = {}) {
     super(message);
     this.name = 'CanvasError';
     this.status = status;
     this.url = url;
     this.body = body;
+    this.code = code;
+    this.host = host;
+    this.attempts = attempts;
+    this.step = step;
   }
 }
 
@@ -84,8 +88,55 @@ export function throttleDelay(remaining) {
   return 0;
 }
 
-// Errors where the request never reached Canvas, so even a write is safe to retry.
-const NOT_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
+// Errors where the connection never opened, so nothing reached Canvas and even a write is safe to repeat.
+// ECONNRESET and the like are left out on purpose: they can arrive after Canvas has already acted on the request.
+const NOT_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'ENETDOWN', 'UND_ERR_CONNECT_TIMEOUT']);
+
+const timedOut = (e) => e?.name === 'TimeoutError' || e?.name === 'AbortError';
+
+/** True when a failed fetch provably never reached the server. Trying several addresses fails with a list of errors. */
+export function neverSent(e) {
+  const c = e?.cause || e;
+  return (c?.errors?.length ? c.errors : [c]).every((x) => NOT_SENT.has(x?.code) || x?.syscall === 'connect' || x?.syscall === 'getaddrinfo');
+}
+
+export function hostOf(url) {
+  try { return new URL(url).hostname; } catch { return ''; }
+}
+
+/** Addresses in text cut down to their host, because upload URLs carry signed parameters. */
+export const hideAddresses = (text) => String(text ?? '').replace(/https?:\/\/[^\s)]+/g, (u) => hostOf(u) || 'that address');
+
+/** A failed fetch as a CanvasError that says which host failed and why. The school-address hint only shows for Canvas itself. */
+export function networkError(e, { url, base = '', attempts = 1, timeoutMs = 0 }) {
+  const host = hostOf(url);
+  const isCanvas = Boolean(host) && host === hostOf(base);
+  const tries = attempts > 1 ? ` after ${attempts} attempts` : '';
+  if (timedOut(e)) {
+    return new CanvasError(`${isCanvas ? 'Canvas' : host || 'The server'} didn't answer within ${Math.round(timeoutMs / 1000)} seconds${tries}. It may be slow or down; try again shortly.`, { url, code: 'TIMEOUT', host, attempts });
+  }
+  const c = e?.cause || e;
+  const code = c?.code || c?.errors?.[0]?.code || '';
+  const reason = hideAddresses(c?.message || e?.message);
+  const help = isCanvas ? `Check your internet connection and the school address (${base}).` : 'Check your internet connection.';
+  return new CanvasError(`Couldn't reach ${isCanvas ? `Canvas at ${host}` : host || 'the server'} (${code ? `${code}: ` : ''}${reason})${tries}. ${help}`, { url, code, host, attempts });
+}
+
+/**
+ * fetch for requests outside the client's queue (storage uploads, file downloads), with the same backoff. `init` runs
+ * for every attempt, so a form is built fresh each time. Only for requests that do no harm if repeated. One that ran
+ * out of time isn't repeated, because it would only wait just as long again.
+ */
+export async function fetchWithRetry(fetchImpl, url, init, { retries = 3, base = '', timeoutMs }) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchImpl(url, { ...init(), signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      if (attempt > retries || timedOut(e)) throw networkError(e, { url, base, attempts: attempt, timeoutMs });
+      await sleep(500 * attempt);
+    }
+  }
+}
 
 export class CanvasClient {
   constructor({ api, token, ttl, base = '', fetchImpl = fetch, timeoutMs = 60000 }) {
@@ -127,9 +178,10 @@ export class CanvasClient {
     return url.toString();
   }
 
-  async raw(method, p, { params, body, headers, retries = 3, expectJson = true } = {}) {
+  /** `repeatable` marks a write where a second copy does no harm, like asking for an upload slot. */
+  async raw(method, p, { params, body, headers, retries = 3, expectJson = true, repeatable = false } = {}) {
     const url = this.buildUrl(p, params);
-    const idempotent = method === 'GET';
+    const idempotent = method === 'GET' || repeatable;
     return this.enqueue(async () => {
       let attempt = 0;
       for (;;) {
@@ -152,12 +204,8 @@ export class CanvasClient {
         try {
           res = await this.fetch(url, { method, headers: h, body: payload, signal: AbortSignal.timeout(this.timeoutMs) });
         } catch (e) {
-          const code = e.cause?.code || e.code;
-          const timedOut = e.name === 'TimeoutError' || e.name === 'AbortError';
-          if (attempt <= retries && (idempotent || NOT_SENT.has(code))) { await sleep(500 * attempt); continue; }
-          throw new CanvasError(timedOut
-            ? `Canvas didn't answer within ${Math.round(this.timeoutMs / 1000)} seconds. It may be slow or down; try again shortly.`
-            : `Couldn't reach Canvas (${e.cause?.message || e.message}). Check your internet connection and the school address (${this.base || 'not set'}).`, { url });
+          if (attempt <= retries && (idempotent || neverSent(e))) { await sleep(500 * attempt); continue; }
+          throw networkError(e, { url, base: this.base, attempts: attempt, timeoutMs: this.timeoutMs });
         }
 
         const cost = res.headers.get('x-request-cost');
@@ -232,7 +280,7 @@ export class CanvasClient {
   }
 
   // Any change drops the whole cache, so the next read after a submit, post or edit always sees the new state.
-  async post(p, body, params) { this.cache.clear(); return (await this.raw('POST', p, { body, params })).data; }
+  async post(p, body, params, options) { this.cache.clear(); return (await this.raw('POST', p, { body, params, ...options })).data; }
   async put(p, body, params) { this.cache.clear(); return (await this.raw('PUT', p, { body, params })).data; }
   async del(p, params) { this.cache.clear(); return (await this.raw('DELETE', p, { params })).data; }
 }

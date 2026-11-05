@@ -86,6 +86,7 @@ export default function register(ctx) {
       cache_ttl_seconds: CACHE_TTL / 1000, timezone: TZ, download_dir: DOWNLOAD_DIR,
       remembers_between_runs: state.file || 'nothing (no state folder)',
       max_response_chars: cfg.maxChars,
+      ip_family: cfg.ipFamily || 'automatic',
       tools_registered: registry.length, tools_skipped_by_config: skipped(),
       groups: [...new Set(registry.map((t) => t.group))],
       write_tools: registry.filter((t) => t.write).length,

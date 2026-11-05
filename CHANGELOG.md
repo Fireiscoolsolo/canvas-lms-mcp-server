@@ -3,6 +3,21 @@
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
 ([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
 
+## 1.3.1
+
+### Fixed
+- **A slow DNS lookup no longer breaks new connections.** On some computers the system's lookup takes longer than the 10 seconds Node allows for a new connection, every time. If it hasn't answered within a second, the server now asks the DNS server directly too and uses the first answer.
+- **A lost connection no longer fails a submission or upload.** When a connection never opened, nothing reached Canvas, so every request is now tried again, not only reads. Requests that may have reached Canvas are still never repeated, so nothing is submitted twice.
+- **Uploads and downloads retry.** The upload slot request, the storage upload and file downloads now retry lost connections. The storage upload also has a time limit now.
+- **Errors say what failed.** Upload errors name the step, the host and the error code, and the school-address hint only appears for the school's own address. Signed upload addresses are never shown.
+- **Tool failures are logged**, with the time, tool, step, host and error code, so they can be traced afterwards. The token and signed addresses are left out.
+- A missing file's error names the computer running the server. If a submission fails after its upload, the error says to check `get_my_submission` first.
+- A standby computer retries a lost heartbeat once before counting it, and logs the error code.
+
+### New
+- `doctor` has a **Network** section: how long DNS takes, and whether a new secure connection opens to each of the school's addresses.
+- `CANVAS_IP_FAMILY=4` (or `6`) uses only that kind of address.
+
 ## 1.3.0
 
 ### Status page and sign-ins

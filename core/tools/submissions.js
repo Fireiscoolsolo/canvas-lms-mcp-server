@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty } = ctx;
+  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
 
   const D = 'submissions';
 
@@ -57,7 +57,12 @@ export default function register(ctx) {
 
   const submitFile = async (a) => {
     const file = await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/files`, a.file_path);
-    const r = await canvas.post(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions`, { submission: { submission_type: 'online_upload', file_ids: [file.id], comment: a.comment ? { text_comment: a.comment } : undefined } });
+    let r;
+    try {
+      r = await canvas.post(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions`, { submission: { submission_type: 'online_upload', file_ids: [file.id], comment: a.comment ? { text_comment: a.comment } : undefined } });
+    } catch (e) {
+      throw new CanvasError(`The file uploaded (file id ${file.id}), but creating the submission failed: ${e.message} Check get_my_submission before trying again, so nothing is submitted twice.`, { status: e.status, code: e.code, attempts: e.attempts, host: e.host, step: 'submission create' });
+    }
     return ok({ uploaded: { id: file.id, filename: file.filename, size: file.size }, submission: pick(r, SUB_FIELDS) }, 'Submitted.');
   };
   submitFile.preview = async (a) => {
