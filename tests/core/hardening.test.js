@@ -197,3 +197,26 @@ test('a complete list, or one the tool already pages, has no such note', async (
     assert.doesNotMatch(paged.content[0].text, CUT);
   } finally { await s.close(); }
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// The activity stream fits in one answer
+// ---------------------------------------------------------------------------------------------------------------
+
+test('the activity stream keeps what matters and leaves out the whole assignment and course', async () => {
+  const big = 'x'.repeat(3000);
+  const items = Array.from({ length: 50 }, (_, i) => ({
+    id: String(i), type: 'Submission', title: `Grade for HW ${i}`, message: '<p>Graded</p>', created_at: soon, html_url: `/courses/1/assignments/${i}/submissions/9`,
+    course_id: '1', context_type: 'Course', score: 9, grade: 'A-', read_state: false,
+    assignment: { id: String(i), description: big, rubric: [{ description: big }] }, course: { id: '1', syllabus_body: big }, user: { id: '9', name: 'Alex Example', bio: big },
+  }));
+  const s = await connect({ override: (m, p) => (p === '/users/self/activity_stream' ? { body: items } : undefined) });
+  try {
+    const r = await s.client.callTool({ name: 'get_activity_stream', arguments: {} });
+    const text = r.content[0].text;
+    assert.ok(text.length < 60000, `${text.length} characters`);
+    assert.doesNotMatch(text, /"assignment"|"course"|"user"/);
+    assert.match(text, /Grade for HW 49/);
+    assert.match(text, /"score": 9/);
+    assert.match(text, /Graded/);
+  } finally { await s.close(); }
+});

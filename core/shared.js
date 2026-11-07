@@ -111,6 +111,9 @@ export const FIELDS = {
   SUB_FIELDS: ['id', 'assignment_id', 'user_id', 'submitted_at', 'score', 'grade', 'entered_score', 'entered_grade', 'workflow_state', 'late', 'missing', 'excused', 'attempt', 'seconds_late', 'points_deducted', 'grade_matches_current_submission', 'submission_type', 'preview_url', 'html_url', 'attachments', 'rubric_assessment'],
   TOPIC_FIELDS: ['id', 'title', 'posted_at', 'last_reply_at', 'discussion_type', 'locked', 'pinned', 'require_initial_post', 'user_can_see_posts', 'discussion_subentry_count', 'read_state', 'unread_count', 'subscribed', 'html_url', 'assignment_id', 'is_announcement'],
   FILE_FIELDS: ['id', 'display_name', 'filename', 'content-type', 'size', 'url', 'created_at', 'updated_at', 'folder_id', 'locked_for_user', 'mime_class'],
+  // Activity stream items about a submission carry the whole assignment, course and user, which made one page of the
+  // stream about 200,000 characters on a real Canvas. These are the parts that say what happened.
+  STREAM_FIELDS: ['id', 'type', 'title', 'message', 'created_at', 'updated_at', 'html_url', 'context_type', 'course_id', 'group_id', 'read_state', 'notification_category', 'score', 'grade', 'excused', 'late', 'missing', 'submitted_at', 'workflow_state', 'submission_comments', 'total_root_discussion_entries', 'participant_count'],
 };
 
 /**

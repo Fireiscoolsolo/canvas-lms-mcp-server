@@ -3,7 +3,7 @@ import { matchToken } from '../token-watch.js';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty } = ctx;
+  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty, STREAM_FIELDS } = ctx;
 
   const A = 'identity';
 
@@ -55,7 +55,7 @@ export default function register(ctx) {
   });
 
   get({ name: 'list_my_enrollments', group: A, description: 'All enrollments for the current user across courses, including role, section, and grade summary.', path: '/users/self/enrollments', params: (a) => ({ state: a.state || ['active', 'invited'], type: a.type }), schema: { state: z.array(z.string()).optional().describe('active, invited, completed, inactive'), type: z.array(z.string()).optional(), limit: LIMIT }, paginate: true });
-  get({ name: 'get_activity_stream', group: A, description: 'Recent activity across all courses: new announcements, discussion replies, grade changes, messages.', path: '/users/self/activity_stream', schema: { limit: LIMIT, only_active_courses: z.boolean().optional() }, params: (a) => ({ only_active_courses: a.only_active_courses ?? true }), paginate: true, max: 50, fenceFields: ['message', 'title'] });
+  get({ name: 'get_activity_stream', group: A, description: 'Recent activity across all courses: new announcements, discussion replies, grade changes, messages.', path: '/users/self/activity_stream', schema: { limit: LIMIT, only_active_courses: z.boolean().optional() }, params: (a) => ({ only_active_courses: a.only_active_courses ?? true }), paginate: true, max: 50, fields: STREAM_FIELDS, fenceFields: ['message', 'title'] });
   get({ name: 'get_activity_stream_summary', group: A, description: 'Counts of unread items by type. Very cheap. Use before pulling the full stream.', path: '/users/self/activity_stream/summary' });
   get({ name: 'list_todo', group: A, description: "Canvas's own TODO list for the current user: assignments needing submission and items needing grading.", path: '/users/self/todo', paginate: true, max: 100 });
   get({ name: 'get_todo_count', group: A, description: 'Count of TODO items without fetching them. Cheap.', path: '/users/self/todo_item_count' });

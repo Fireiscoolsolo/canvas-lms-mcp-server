@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, assertClean, ID, COURSE, LIMIT, TOPIC_FIELDS, FILE_FIELDS } = ctx;
+  const { tool, get, canvas, ok, assertClean, ID, COURSE, LIMIT, TOPIC_FIELDS, FILE_FIELDS, STREAM_FIELDS } = ctx;
 
   const K = 'groups';
 
@@ -18,5 +18,5 @@ export default function register(ctx) {
   get({ name: 'list_group_categories', group: K, description: 'Group categories/sets defined in a course.', path: (a) => `/courses/${a.course_id}/group_categories`, schema: { course_id: COURSE }, paginate: true });
   tool({ name: 'join_group', group: K, write: true, confirm: true, description: 'Join a self-signup group.', schema: { group_id: ID }, handler: async (a) => ok(await canvas.post(`/groups/${a.group_id}/memberships`, { user_id: 'self' }), 'Joined.') });
   tool({ name: 'leave_group', group: K, write: true, confirm: true, description: 'Leave a group you are a member of.', schema: { group_id: ID }, handler: async (a) => ok(await canvas.del(`/groups/${a.group_id}/users/self`), 'Left group.') });
-  get({ name: 'get_group_activity_stream', group: K, description: 'Recent activity in a group workspace.', path: (a) => `/groups/${a.group_id}/activity_stream`, schema: { group_id: ID }, paginate: true, max: 30, fenceFields: ['message', 'title'] });
+  get({ name: 'get_group_activity_stream', group: K, description: 'Recent activity in a group workspace.', path: (a) => `/groups/${a.group_id}/activity_stream`, schema: { group_id: ID }, paginate: true, max: 30, fields: STREAM_FIELDS, fenceFields: ['message', 'title'] });
 }
