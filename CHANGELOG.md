@@ -56,6 +56,7 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 
 ### Releases
 - **A publish from GitHub checks itself first.** Every file that names the version has to agree, the changelog needs a section for it, and the shared tools have to match the other edition. The actions it uses are pinned to exact versions, and the MCP Registry publisher is a fixed release checked against its published checksum. Every test run now also fails if the shared tools differ between the two editions.
+- The number of tools written in the README, the website and the package listings is now checked against what the server registers, so it can't drift again.
 
 ### If your server stops starting after this update
 Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.
