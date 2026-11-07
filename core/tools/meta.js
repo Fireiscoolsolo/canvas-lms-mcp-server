@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, skipped, tokenWatch, localize, cfg, state, elicitation } = ctx;
+  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, skipped, unknownNames, tokenWatch, localize, cfg, state, elicitation } = ctx;
 
   const O = 'meta';
 
@@ -78,8 +78,10 @@ export default function register(ctx) {
       server: SERVER_NAME, version: SERVER_VERSION,
       base_url: BASE || '(unset)', api_root: API || '(unset)',
       token_present: Boolean(TOKEN), token_source: cfg.tokenSource, token_problem: cfg.tokenError || undefined,
+      settings_problem: cfg.settingsProblem || undefined,
       writes_enabled: ALLOW_WRITES, profile: PROFILE,
       tool_filter: cfg.tools ? [...cfg.tools] : 'all groups', tools_left_out: cfg.disabled.size ? [...cfg.disabled] : undefined,
+      unknown_tool_names: unknownNames().length ? unknownNames() : undefined,
       confirmations: elicitation ? 'asked in the app when it supports it, otherwise confirm=true after a dry run' : 'confirm=true after a dry run',
       cache_ttl_seconds: CACHE_TTL / 1000, timezone: TZ, download_dir: DOWNLOAD_DIR,
       remembers_between_runs: state.file || 'nothing (no state folder)',

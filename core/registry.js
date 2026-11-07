@@ -59,6 +59,7 @@ export function confirmMessage(name, preview) {
 
 export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {} }) {
   const registry = [];
+  const known = new Set();
   let skipped = 0;
 
   /** Failures go in the log too, so they can still be traced after the chat is gone. Hosts only, never full addresses. */
@@ -82,6 +83,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   }
 
   function setupProblem() {
+    if (cfg.settingsProblem) return cfg.settingsProblem;
     if (cfg.tokenError) return cfg.tokenError;
     if (!cfg.token) return `CANVAS_API_TOKEN is not set. ${missingTokenHelp}`.trim();
     if (!cfg.api) return 'CANVAS_BASE_URL is not set. Example: https://yourschool.instructure.com';
@@ -143,6 +145,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
    *   output  - zod shape of the structured result; the handler must then return ok(..., { structured })
    */
   function tool({ name, description, schema = {}, handler, write = false, confirm = false, group = '', offline = false, local = false, output }) {
+    known.add(name);
+    if (group) known.add(group);
     if (!enabled(name, group, write)) { skipped++; return; }
 
     const doc = TOOL_DOCS[name] || {};
@@ -215,5 +219,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
     });
   }
 
-  return { tool, get, registry, skipped: () => skipped, ID, COURSE, LIMIT, PAGE };
+  /** Names in CANVAS_TOOLS and CANVAS_DISABLE_TOOLS that match no tool or group, so they did nothing. */
+  const unknownNames = () => [...cfg.disabled, ...(cfg.tools || [])].filter((n) => !known.has(n));
+
+  return { tool, get, registry, skipped: () => skipped, unknownNames, ID, COURSE, LIMIT, PAGE };
 }

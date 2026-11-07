@@ -4,7 +4,7 @@
 //   CANVAS_API_TOKEN_FILE  Or: path to a file that holds only the token
 //   CANVAS_TOKEN_STORE     Or: "keychain" to read it from Windows Credential Manager / macOS Keychain / secret-tool
 //   CANVAS_BASE_URL        e.g. https://yourschool.instructure.com (with or without /api/v1)
-//   CANVAS_ALLOW_WRITES    "false" removes every tool that changes something. Default: true
+//   CANVAS_ALLOW_WRITES    false (or 0, no, off) removes every tool that changes Canvas. Default: true
 //   CANVAS_PROFILE         "full" (default, all tools) | "core" (curated subset)
 //   CANVAS_TOOLS           Only these groups or tool names, comma-separated, e.g. "grades,planning,whoami"
 //   CANVAS_DISABLE_TOOLS   Leave out these groups or tool names, comma-separated
@@ -45,14 +45,34 @@ export function resolveToken(env = process.env, { readStore = readStoredToken } 
 
 export const ipFamilyFrom = (env = process.env) => (['4', '6'].includes(String(env.CANVAS_IP_FAMILY).trim()) ? Number(env.CANVAS_IP_FAMILY) : null);
 
+const YES = new Set(['true', '1', 'yes', 'on']);
+const NO = new Set(['false', '0', 'no', 'off']);
+
+/** Never really set. An app that can't fill in a setting can leave its ${placeholder} behind. */
+const blank = (v) => !String(v ?? '').trim() || /^\$\{.*\}$/.test(String(v).trim());
+
+/**
+ * The settings that restrict what the server may do. A value nobody can read must never mean "no restriction", so it
+ * falls back to the safe choice and is reported: tools refuse with the message, and Remote won't start.
+ */
+function readLimits(env) {
+  const problems = [];
+  const writes = String(env.CANVAS_ALLOW_WRITES ?? '').trim().toLowerCase();
+  const profile = String(env.CANVAS_PROFILE ?? '').trim().toLowerCase();
+  const writesOn = blank(env.CANVAS_ALLOW_WRITES) || YES.has(writes);
+  const everything = blank(env.CANVAS_PROFILE) || profile === 'full';
+  if (!writesOn && !NO.has(writes)) problems.push(`CANVAS_ALLOW_WRITES is set to "${env.CANVAS_ALLOW_WRITES}", which this server can't read. Use true or false.`);
+  if (!everything && profile !== 'core') problems.push(`CANVAS_PROFILE is set to "${env.CANVAS_PROFILE}", which this server can't read. Use full or core.`);
+  return { allowWrites: writesOn, profile: everything ? 'full' : 'core', settingsProblem: problems.join(' ') };
+}
+
 export function readConfig(env = process.env, { defaultDownloadDir, readStore } = {}) {
   const base = normalizeBase(env.CANVAS_BASE_URL);
   return {
     ...resolveToken(env, { readStore }),
     base,
     api: base ? `${base}/api/v1` : '',
-    allowWrites: String(env.CANVAS_ALLOW_WRITES ?? 'true') !== 'false',
-    profile: String(env.CANVAS_PROFILE || 'full').toLowerCase(),
+    ...readLimits(env),
     tools: list(env.CANVAS_TOOLS),
     disabled: list(env.CANVAS_DISABLE_TOOLS) || new Set(),
     cacheTtl: Number(env.CANVAS_CACHE_TTL || 60) * 1000,

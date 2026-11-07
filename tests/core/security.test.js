@@ -247,6 +247,60 @@ test('real Canvas IDs still work', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------------------------------------------
+// A setting that restricts something never fails open
+// ---------------------------------------------------------------------------------------------------------------
+
+async function toolsWith(env) {
+  const { built, client, close } = await connect({ env });
+  const config = JSON.parse(text(await client.callTool({ name: 'get_server_config', arguments: {} })));
+  const whoami = await client.callTool({ name: 'search_tools', arguments: { query: 'whoami' } });
+  const canvasTool = built.registry.some((t) => t.name === 'whoami') ? await client.callTool({ name: 'whoami', arguments: {} }) : null;
+  await close();
+  return { tools: built.registry.length, writes: built.registry.filter((t) => t.write).length, config, whoami, canvasTool };
+}
+
+test('every spelling of "no writes" turns writes off, and every spelling of "yes" leaves them on', async () => {
+  for (const v of ['false', 'FALSE', 'False', '0', 'no', 'No', 'off', ' false', 'false ']) {
+    const r = await toolsWith({ CANVAS_ALLOW_WRITES: v });
+    assert.equal(r.writes, 0, `${JSON.stringify(v)} must turn writes off`);
+    assert.equal(r.config.settings_problem, undefined);
+    assert.ok(!r.canvasTool.isError);
+  }
+  for (const v of [undefined, '', '   ', 'true', 'TRUE', '1', 'yes', 'on', '${user_config.allow_writes}']) {
+    const r = await toolsWith(v === undefined ? {} : { CANVAS_ALLOW_WRITES: v });
+    assert.equal(r.writes, 65, `${JSON.stringify(v)} must leave writes on`);
+    assert.equal(r.tools, 237);
+  }
+});
+
+test('a value nobody can read fails closed and says why', async () => {
+  for (const v of ['flase', 'nope', '2', 'disabled']) {
+    const r = await toolsWith({ CANVAS_ALLOW_WRITES: v });
+    assert.equal(r.writes, 0, `${v} must not leave writes on`);
+    assert.match(r.config.settings_problem, /CANVAS_ALLOW_WRITES/);
+    assert.equal(r.canvasTool.isError, true);
+    assert.match(text(r.canvasTool), /CANVAS_ALLOW_WRITES/);
+  }
+});
+
+test('the profile setting is trimmed, and an unknown one means the smaller set', async () => {
+  for (const v of ['core', 'CORE', 'Core ', ' core']) assert.equal((await toolsWith({ CANVAS_PROFILE: v })).tools, 49, JSON.stringify(v));
+  for (const v of [undefined, 'full', ' FULL ', '${user_config.profile}']) assert.equal((await toolsWith(v === undefined ? {} : { CANVAS_PROFILE: v })).tools, 237, JSON.stringify(v));
+  for (const v of ['cor', 'minimal']) {
+    const r = await toolsWith({ CANVAS_PROFILE: v });
+    assert.equal(r.tools, 49, `${v} must not serve everything`);
+    assert.match(r.config.settings_problem, /CANVAS_PROFILE/);
+  }
+});
+
+test('a name in the tool lists that matches nothing is reported, not silently ignored', async () => {
+  const typo = await toolsWith({ CANVAS_DISABLE_TOOLS: 'raw_canvas_requests,inbox' });
+  assert.deepEqual(typo.config.unknown_tool_names, ['raw_canvas_requests']);
+  const fine = await toolsWith({ CANVAS_DISABLE_TOOLS: 'raw_canvas_request,inbox' });
+  assert.equal(fine.config.unknown_tool_names, undefined);
+});
+
 test('the endpoints this server needs are not caught by the blocks', async () => {
   const calls = [];
   const { built, close } = await connect({ calls });
