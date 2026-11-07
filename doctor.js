@@ -9,6 +9,7 @@ import { matchToken, daysLeft } from './core/token-watch.js';
 import { normalizeBase } from './core/canvas-client.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings, checkConnections, reportConnections } from './core/network.js';
+import { startupProblems } from './startup-check.js';
 
 const REQUIRED = {
   CANVAS_API_TOKEN: 'your Canvas token (Canvas > Account > Settings > + New Access Token)',
@@ -44,10 +45,13 @@ export async function runDoctor({ dir, version, fetchImpl = fetch, service = ser
     return 1;
   }
   applyNetworkSettings({ ipFamily: ipFamilyFrom(env) });
+  const reported = new Set();
   for (const [k, what] of Object.entries(REQUIRED)) {
-    if (!env[k] || /paste_your|choose_a|generate_a|your-domain|yourschool/.test(env[k])) bad(`${k} is not set`, `Add ${what} to .env.`);
+    if (!env[k] || /paste_your|choose_a|generate_a|your-domain|yourschool/.test(env[k])) { bad(`${k} is not set`, `Add ${what} to .env.`); reported.add(k); }
   }
-  if (env.CANVAS_MCP_PASSWORD && env.CANVAS_MCP_PASSWORD.length < 12) warn('The password is short. Use 12 or more characters ("canvas-lms-mcp-remote rotate-password" makes a strong one).');
+  const startup = startupProblems(env);
+  for (const e of startup.errors) if (!reported.has(e.key)) bad(`The server won't start: ${e.message}`);
+  for (const w of startup.warnings) warn(w);
   if (env.CANVAS_MCP_TOTP_SECRET) good('Two-factor codes are on');
   const major = Number(process.versions.node.split('.')[0]);
   if (major >= 18) good(`Node.js ${process.versions.node}`); else bad(`Node.js ${process.versions.node} is too old`, 'Install Node.js 20 or newer from https://nodejs.org');

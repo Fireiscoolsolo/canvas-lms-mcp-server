@@ -20,6 +20,7 @@
     "log-file.js",
     "service.js",
     "doctor.js",
+    "startup-check.js",
     "env-file.js",
     "core/",
     "Dockerfile",

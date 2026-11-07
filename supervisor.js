@@ -53,6 +53,7 @@ import { createRotatingLog } from './log-file.js';
 import { redact } from './core/text.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings } from './core/network.js';
+import { startupProblems } from './startup-check.js';
 
 dotenv.config({ quiet: true });
 applyNetworkSettings({ ipFamily: ipFamilyFrom() });
@@ -131,6 +132,12 @@ if (TUNNEL === 'cloudflared' && !CLOUDFLARED_TOKEN) {
   log('CANVAS_MCP_TUNNEL=cloudflared needs CANVAS_MCP_CLOUDFLARED_TOKEN (the tunnel token from the Cloudflare dashboard)');
   process.exit(1);
 }
+
+// The same check the server makes, so a server that can't start isn't restarted every few seconds forever.
+const { errors: cannotStart, warnings: startupWarnings } = startupProblems(process.env);
+for (const w of startupWarnings) log(`WARNING: ${w}`);
+for (const e of cannotStart) log(`can't start: ${e.message}`);
+if (cannotStart.length) process.exitCode = 1;
 
 async function callInternal(pathname, { method = 'GET', body, timeoutMs = 6000 } = {}) {
   const controller = new AbortController();
@@ -385,4 +392,4 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-main().catch((e) => { log(`fatal: ${e.stack || e.message}`); process.exit(1); });
+if (!cannotStart.length) main().catch((e) => { log(`fatal: ${e.stack || e.message}`); process.exit(1); });

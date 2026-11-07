@@ -17,6 +17,13 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Private files are never uploaded.** Uploads refuse `.env` files, keys, sign-in files, this server's settings folder, and the folders that browsers and AI apps keep their data in. Schoolwork still uploads from any other folder.
 - **Confirmation can't be skipped.** Apps connected to Remote get a preview with a one-time token, tied to that tool and those exact details, for 5 minutes. A submission, delete or upload is refused if the assignment, item or file changed after the preview. The token stops stale or swapped requests. It doesn't prove a person said yes, so your AI app's own approval step still matters.
 - **More actions ask first:** `upload_to_my_files`, `upload_submission_file`, `upload_comment_attachment`, `delete_planner_note`, `delete_bookmark`, `update_planner_note`, `update_calendar_event`, `rate_entry`, `create_content_export`, `export_course_archive`, and every write through `raw_canvas_request`.
+- **The server won't start open to the internet.** With a public address or a `CANVAS_MCP_HOST` other computers can reach, it now stops with a message if the password is empty or still the example from `.env.example`, if the cluster secret is the example or under 16 characters, if there's no public address for sign-in to use, or if a restrictive setting can't be read. The supervisor makes the same check, and `doctor` reports it. A password under 12 characters only warns for now. `--stdio` is not affected.
+- **Guessing the cluster secret gets locked out** after 20 wrong tries from one address in 15 minutes. Correct requests never count, so heartbeats are safe.
+- **An app's name can't run as code on the status page.** Anyone could register an app, so a crafted name could run in your browser when you clicked Sign out. A name with an apostrophe also skipped the "are you sure" prompt. Both are fixed.
+- **Password pages are harder to abuse.** The login and status pages now refuse to be framed, aren't cached, send no referrer, and the browser won't run any script they didn't ship with.
+
+### If your server stops starting after this update
+Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.
 
 ## 1.3.1
 

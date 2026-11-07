@@ -21,7 +21,6 @@
  *   CANVAS_MCP_CLUSTER_SECRET optional  Shared secret protecting the /internal/* endpoints used by
  *                                  supervisor.js for active/standby handoff between two machines
  *                                  running this same server. Must be identical on both machines.
- *                                  No effect unless CANVAS_MCP_PUBLIC_URL is also set.
  *   CANVAS_MCP_TRUST_PROXY optional Which proxies to trust for the visitor's address (rate limits).
  *                                  Default: loopback. Docker setups use "uniquelocal".
  *   CANVAS_MCP_TRANSPORT optional  "stdio" (or the --stdio flag) serves over stdin/stdout instead of
@@ -54,6 +53,7 @@ import { createOAuthProvider } from './oauth-provider.js';
 import { startAlerts, alertSettings, describeAlerts } from './alerts.js';
 import { createFileShare } from './file-share.js';
 import { createStatusRouter } from './status-page.js';
+import { startupProblems } from './startup-check.js';
 
 dotenv.config({ quiet: true });
 
@@ -115,6 +115,13 @@ function readSupervisorState() {
 }
 
 async function main() {
+  if (!STDIO) {
+    const { errors, warnings } = startupProblems(process.env);
+    for (const w of warnings) log(`WARNING: ${w}`);
+    for (const e of errors) log(`Can't start: ${e.message}`);
+    if (errors.length) { process.exitCode = 1; return; }
+  }
+
   built.start();
 
   // stdio mode: lets directories and sandboxes that only speak stdio (for
@@ -239,7 +246,10 @@ async function main() {
   // OAuth — they're machine-to-machine, gated by a separate shared secret,
   // since the standby instance calls them before it has any OAuth token.
   // The setup app and the command line use them too, for status and sessions.
+  // Wrong guesses get locked out. Right answers don't count, so heartbeats never trip it.
   // ---------------------------------------------------------------------
+  app.use('/internal', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false, message: { error: 'too_many_attempts' } }));
+
   function requireClusterSecret(req, res, next) {
     const provided = Buffer.from(String(req.headers['x-cluster-secret'] || ''));
     const expected = Buffer.from(CLUSTER_SECRET);
