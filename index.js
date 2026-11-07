@@ -256,8 +256,11 @@ async function main() {
     next();
   }
 
+  // Who is answering the public address. A computer that is serving asks this through the public address too: when
+  // another computer answers, both are serving, and active_since says which one took over more recently.
   app.get('/internal/whoami', requireClusterSecret, (_req, res) => {
-    res.json({ hostname: os.hostname(), pid: process.pid, startedAt: START_TIME, version: VERSION });
+    const sup = readSupervisorState();
+    res.json({ hostname: os.hostname(), pid: process.pid, startedAt: START_TIME, active_since: sup?.state === 'active' ? sup.since : null, version: VERSION });
   });
 
   app.post('/internal/heartbeat', requireClusterSecret, (req, res) => {
@@ -286,7 +289,14 @@ async function main() {
     }
   });
 
-  app.post('/internal/step-down', requireClusterSecret, (_req, res) => {
+  // A request can name the computer it is meant for. When two computers share the public address it can land on
+  // either one, so the other refuses it. One that names nobody (takeover, older versions) steps down whoever gets it.
+  app.post('/internal/step-down', requireClusterSecret, (req, res) => {
+    const { hostname, pid } = req.body || {};
+    if (hostname !== undefined && (String(hostname) !== os.hostname() || Number(pid) !== process.pid)) {
+      res.status(409).json({ error: 'not_me', hostname: os.hostname(), pid: process.pid });
+      return;
+    }
     log('received step-down request; exiting for handoff');
     res.json({ ok: true });
     setTimeout(() => process.exit(42), 200);
@@ -294,9 +304,8 @@ async function main() {
 
   // GET opens a standalone, long-lived SSE stream for server-initiated push
   // notifications (spec-optional). This server never pushes anything to the
-  // client, and routing a request that's designed to stay open forever
-  // through the serial queue above would permanently block every POST
-  // queued behind it. Reject it fast instead of letting it hang.
+  // client, and a request designed to stay open forever would hold a server
+  // open for nothing. Reject it fast instead of letting it hang.
   app.get('/mcp', (_req, res) => {
     res.set('Allow', 'POST, DELETE');
     res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method Not Allowed: server-initiated streams are not supported' } });

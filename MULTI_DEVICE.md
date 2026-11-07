@@ -247,6 +247,7 @@ Repeat Steps 1–6 on that computer. There's no limit: one computer is active an
 | The active computer sleeps, shuts down or loses internet | Standby computers check every **25 s**. After **2** failed checks, plus a random 0–4 s delay so two standby computers don't both take over, one takes over |
 | The sleeping computer wakes up | Its ngrok can't reconnect because the domain is taken (`ERR_NGROK_334`), so it **steps back to standby on its own** |
 | Two computers try to become active at once | ngrok lets only one hold the domain. The other detects this and returns to standby |
+| Two computers both serve on Cloudflare Tunnel | Cloudflare runs both connectors, so this can happen after a standby loses internet for a minute. Each serving computer asks the public address who answers it every **25 s**. When another computer answers, the one that took over more recently returns to standby. If each computer's checks only ever reach itself, which can happen when the computers are far apart, neither can tell: `canvas-lms-mcp-remote status` on each computer shows it, and `canvas-lms-mcp-remote restart` on the one that shouldn't serve brings it back in standby |
 | The server crashes on the active computer | The supervisor restarts it after 3 s |
 | The supervisor itself crashes | The scheduled task restarts it within a minute (up to 999 times) |
 

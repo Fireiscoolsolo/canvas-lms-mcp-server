@@ -29,6 +29,11 @@
  *   - Safety net: if two machines somehow try to become active at once,
  *     ngrok only lets one claim the static domain. The loser detects that
  *     (via ngrok's local inspection API) and falls back to standby.
+ *     Cloudflare Tunnel has no such claim: it runs both connectors and splits
+ *     requests between them. So while active, each computer also asks the
+ *     public URL who answers (/internal/whoami). If another computer does,
+ *     both are serving, and the one that became active more recently steps
+ *     back (or is asked to, when the other's checks only ever reach it).
  *
  * Requests from the command line arrive as small files in the settings
  * folder: stop.flag (shut down cleanly; `canvas-lms-mcp-remote stop`) and
@@ -114,14 +119,17 @@ function pipeLines(stream) {
 let serverChild = null;
 let tunnelChild = null;
 let state = 'starting';
+let stateSince = Date.now();
+let activeRun = 0; // which stretch of being active the split-brain check belongs to
 
 const log = (...a) => writeOut(`[supervisor ${new Date().toISOString()}] ${a.join(' ')}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setState(next) {
   state = next;
+  stateSince = Date.now();
   try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ state, since: new Date().toISOString(), hostname: os.hostname(), pid: process.pid, tunnel: TUNNEL, public_url: PUBLIC_URL, version: VERSION, log_file: logFile?.file || null }, null, 2));
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ state, since: new Date(stateSince).toISOString(), hostname: os.hostname(), pid: process.pid, tunnel: TUNNEL, public_url: PUBLIC_URL, version: VERSION, log_file: logFile?.file || null }, null, 2));
   } catch { /* read-only folder */ }
 }
 
@@ -289,6 +297,36 @@ async function becomeActive() {
     return;
   }
   log(`active and serving at ${PUBLIC_URL}${TUNNEL === 'none' ? ' (no tunnel: the address is routed outside this program)' : ` through ${TUNNEL}`}`);
+  watchForAnotherActive(++activeRun);
+}
+
+/**
+ * While serving, ask the public address who answers it. Normally that's this computer. If another one answers, both
+ * are serving: apps fail at random and sign-ins split between two stores. The one that became active more recently
+ * steps back to standby. When this one is older, it asks the other to step down instead, naming it, because its own
+ * checks might be the only ones that reach the other computer.
+ */
+async function watchForAnotherActive(run) {
+  const mine = () => `${os.hostname()}:${serverChild?.pid}`;
+  while (state === 'active' && run === activeRun) {
+    await sleep(POLL_INTERVAL_MS);
+    if (state !== 'active' || run !== activeRun) return;
+    const who = await callInternal('/internal/whoami', { timeoutMs: 5000 });
+    const other = who.ok && who.data && typeof who.data === 'object' ? who.data : null;
+    if (!other || (other.hostname === os.hostname() && Number(other.pid) === serverChild?.pid)) continue;
+    const theirs = Date.parse(other.active_since || other.startedAt || '') || 0;
+    const theyAreNewer = theirs > stateSince || (theirs === stateSince && `${other.hostname}:${other.pid}` > mine());
+    if (theyAreNewer) {
+      log(`${other.hostname || 'another computer'} is also serving the public address and took over later; asking it to step down`);
+      await callInternal('/internal/step-down', { method: 'POST', body: { hostname: other.hostname, pid: other.pid } });
+    } else {
+      log(`${other.hostname || 'another computer'} is also serving the public address and has been serving longer; stepping back to standby`);
+      stopTunnel();
+      stopServer();
+      enterStandby();
+      return;
+    }
+  }
 }
 
 async function enterStandby() {
