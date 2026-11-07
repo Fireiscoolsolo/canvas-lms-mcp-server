@@ -229,7 +229,7 @@ async function main() {
       if (!t) return '';
       try { return new Date(t).toLocaleString('en-US', { timeZone: cfg.tz, dateStyle: 'medium', timeStyle: 'short' }); } catch { return new Date(t).toISOString(); }
     };
-    app.use('/status', createStatusRouter({ password: MCP_PASSWORD, totpSecret: TOTP_SECRET, getStatus: statusData, revokeClient: (id) => auth.revokeClient(id), limiter: loginLimiter, fmt }));
+    app.use('/status', createStatusRouter({ password: MCP_PASSWORD, totpSecret: TOTP_SECRET, getStatus: statusData, revokeClient: (id) => auth.revokeClient(id), checkPassword: auth.passwordAttempt, limiter: loginLimiter, fmt }));
     app.get('/files/:key/:name', files.handler);
     mcpAuthMiddleware = requireBearerAuth({ verifier: auth.provider, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl) });
     // Tidy sign-ins at start and once a day: expired tokens, apps that never finished signing in, unused apps.

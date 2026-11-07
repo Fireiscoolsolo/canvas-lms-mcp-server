@@ -8,6 +8,7 @@ import { acceptTotp } from './totp.js';
 
 const COOKIE = 'canvas_status';
 const SESSION_MS = 12 * 3600000;
+const MAX_SESSIONS = 50;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -76,16 +77,31 @@ ${a.digest ? `<dt>Daily digest</dt><dd>${esc(a.digest)}</dd>` : ''}${a.quiet ? `
 
 /**
  * Express router for /status. getStatus() returns the dashboard data; revokeClient(id) signs an app out.
- * The page remembers you for 12 hours with a signed cookie; sign-out buttons carry a CSRF token.
+ * checkPassword(ip, password, code) decides a sign-in and returns { ok } or { ok, status, message }; the server passes
+ * the login page's, so both share one lockout and one login history.
+ * The page remembers you for 12 hours with a random session ID held in memory, so Lock ends it everywhere and a
+ * restart ends them all. Sign-out buttons carry a CSRF token.
  */
-export function createStatusRouter({ password, totpSecret = '', getStatus, revokeClient, limiter, fmt, now = () => Date.now() }) {
-  const key = crypto.createHash('sha256').update(`canvas-status-page:${password}`).digest();
+export function createStatusRouter({ password, totpSecret = '', getStatus, revokeClient, limiter, fmt, checkPassword, now = () => Date.now() }) {
+  const check = checkPassword || ((_ip, entered, code) => (passwordMatches(entered, password) && (!totpSecret || acceptTotp(totpSecret, code, { now: now() }))
+    ? { ok: true } : { ok: false, status: 401, message: 'That password (or code) is wrong.' }));
+  const key = crypto.randomBytes(32); // for CSRF tokens only; new on every start
+  const sessions = new Map(); // id -> expires (ms)
   const sign = (v) => crypto.createHmac('sha256', key).update(v).digest('base64url');
   const read = (req) => (String(req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`)) || '').slice(COOKIE.length + 1);
   const same = (a, b) => typeof a === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
   const authed = (req) => {
-    const [exp, mac] = read(req).split('.');
-    return Boolean(exp && mac && Number(exp) > now() && same(mac, sign(exp)));
+    const id = read(req);
+    const expires = id ? sessions.get(id) : undefined;
+    if (expires && expires <= now()) sessions.delete(id);
+    return Boolean(expires && expires > now());
+  };
+  const startSession = () => {
+    for (const [id, expires] of sessions) if (expires <= now()) sessions.delete(id);
+    while (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value); // the oldest goes first
+    const id = crypto.randomBytes(32).toString('base64url');
+    sessions.set(id, now() + SESSION_MS);
+    return id;
   };
   const csrf = (req) => sign(`csrf:${read(req)}`);
   const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=/status; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
@@ -99,13 +115,16 @@ export function createStatusRouter({ password, totpSecret = '', getStatus, revok
     res.type('html').send(dashboardPage(await getStatus(), csrf(req), fmt));
   });
   router.post('/login', limiter || ((_q, _s, next) => next()), (req, res) => {
-    const ok = passwordMatches(req.body?.password, password) && (!totpSecret || acceptTotp(totpSecret, req.body?.code, { now: now() }));
-    if (!ok) return res.status(401).type('html').send(loginPage({ error: 'That password (or code) is wrong.', totp: Boolean(totpSecret) }));
-    const exp = String(now() + SESSION_MS);
-    res.set('Set-Cookie', cookie(`${exp}.${sign(exp)}`, SESSION_MS / 1000));
+    const attempt = check(req.ip, req.body?.password, req.body?.code, 'Status page');
+    if (!attempt.ok) return res.status(attempt.status || 401).type('html').send(loginPage({ error: attempt.message, totp: Boolean(totpSecret) }));
+    res.set('Set-Cookie', cookie(startSession(), SESSION_MS / 1000));
     res.redirect(303, '/status');
   });
-  router.post('/logout', (_req, res) => { res.set('Set-Cookie', cookie('', 0)); res.redirect(303, '/status'); });
+  router.post('/logout', (req, res) => {
+    sessions.delete(read(req));
+    res.set('Set-Cookie', cookie('', 0));
+    res.redirect(303, '/status');
+  });
   router.post('/sessions/:id/sign-out', (req, res) => {
     if (!authed(req) || !same(req.body?.csrf, csrf(req))) return res.status(403).type('html').send(page('Expired', '<section><p>This page expired. <a href="/status">Reload it</a> and try again.</p></section>'));
     revokeClient(req.params.id);

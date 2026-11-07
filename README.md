@@ -200,7 +200,7 @@ Then ask your assistant: **"Run test_connection."**
 
 ## Status page
 
-Open **`https://<your-domain>/status`** in any browser and enter your password. It shows whether the server is online and which computer is serving, your Canvas connection and when the token expires, the apps that are signed in (each with a **Sign out** button), recent sign-ins, the computers in your group, your phone-alert settings and recent problems. Nothing secret is ever shown, and the page locks itself after 12 hours.
+Open **`https://<your-domain>/status`** in any browser and enter your password. It shows whether the server is online and which computer is serving, your Canvas connection and when the token expires, the apps that are signed in (each with a **Sign out** button), recent sign-ins, the computers in your group, your phone-alert settings and recent problems. Nothing secret is ever shown, and the page locks itself after 12 hours, or when the server restarts. **Lock** ends that sign-in everywhere. Wrong passwords here count toward the same lockout as the login page, and show up in recent sign-ins.
 
 From a terminal, `canvas-lms-mcp-remote status` and `canvas-lms-mcp-remote sessions` show the same things.
 

@@ -26,6 +26,8 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **A stolen refresh token stops working.** Using a refresh token after it was replaced now signs that sign-in out, so a copied token and the real app can't both keep going. The app just asks for the password again.
 - **Two-factor codes work once**, across the login and status pages. With two-factor on, a wrong password and a wrong code get the same message, so the page never says the password was right.
 - Sign-in codes and wrong-password counts no longer pile up in memory, and sign-in error pages aren't cached.
+- **Lock on the status page really signs you out.** It used to clear the cookie in your own browser only, so a copied cookie kept working for up to 12 hours. Sessions are now random IDs that Lock ends everywhere, and a restart ends them all, so you may need to enter the password again after updating.
+- **Wrong passwords on the status page count.** They now go through the same lockout as the login page, appear in recent sign-ins, and a lockout sends the security alert. With security alerts on, signing in to the status page sends a sign-in alert too.
 
 ### Fixed
 - **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.

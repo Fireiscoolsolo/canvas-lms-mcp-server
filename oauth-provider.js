@@ -392,6 +392,33 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
     try { return JSON.parse(fs.readFileSync(historyPath, 'utf8')).slice(-limit).reverse(); } catch { return []; }
   }
 
+  /**
+   * One try at the password (and code, with two-factor on) from one address, for the login page and the status page
+   * alike: the lockout, the login history and the sign-in alerts all see both. Returns { ok } or { ok, status, message }.
+   */
+  function passwordAttempt(ip, entered, code, app = null) {
+    sweep();
+    const minutes = lockedFor(ip);
+    if (minutes) return { ok: false, status: 429, message: `Too many wrong tries. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.` };
+    const passOk = passwordMatches(entered, password);
+    // The code is only checked (and used up) after a right password, so a wrong guess never spends the real code.
+    const codeOk = !totpSecret || (passOk && acceptTotp(totpSecret, code, { now: now() }));
+    if (!passOk || !codeOk) {
+      const reason = !passOk ? 'wrong password' : 'wrong or reused two-factor code';
+      console.error(`[oauth] failed login attempt from ${ip}${app ? ` for ${app}` : ''} (${reason})`);
+      const locked = noteFailure(ip);
+      recordLogin({ ip, ok: false, app, reason });
+      onLogin({ ok: false, ip, app, reason, locked });
+      // With two-factor on, one message for both, so the page never says the password was right.
+      const message = totpSecret ? 'The password or code is wrong. Use the newest code from your authenticator app.' : 'Incorrect password.';
+      return { ok: false, status: locked ? 429 : 401, message: locked ? 'Too many wrong tries. This address is locked out for 15 minutes.' : message };
+    }
+    failures.delete(ip);
+    recordLogin({ ip, ok: true, app });
+    onLogin({ ok: true, ip, app });
+    return { ok: true };
+  }
+
   // Mounted separately at POST /authorize/approve: the login form's submit target.
   function approveHandler(req, res) {
     const { client_id, redirect_uri, state, code_challenge, resource, scope, password: entered, code } = req.body || {};
@@ -410,34 +437,12 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
       refuse('This sign-in is for a different server.');
       return;
     }
-    sweep();
-    const ip = req.ip;
-    const page = (error, status) => {
+    const attempt = passwordAttempt(req.ip, entered, code, client.client_name || null);
+    if (!attempt.ok) {
       res.set(LOGIN_PAGE_HEADERS);
-      res.status(status).send(renderLoginPage({ clientId: client_id, clientName: client.client_name, redirectUri: redirect_uri, state, codeChallenge: code_challenge, resource, scope, error, totp: Boolean(totpSecret) }));
-    };
-    const minutes = lockedFor(ip);
-    if (minutes) {
-      page(`Too many wrong tries. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`, 429);
+      res.status(attempt.status).send(renderLoginPage({ clientId: client_id, clientName: client.client_name, redirectUri: redirect_uri, state, codeChallenge: code_challenge, resource, scope, error: attempt.message, totp: Boolean(totpSecret) }));
       return;
     }
-    const passOk = passwordMatches(entered, password);
-    // The code is only checked (and used up) after a right password, so a wrong guess never spends the real code.
-    const codeOk = !totpSecret || (passOk && acceptTotp(totpSecret, code, { now: now() }));
-    if (!passOk || !codeOk) {
-      const reason = !passOk ? 'wrong password' : 'wrong or reused two-factor code';
-      console.error(`[oauth] failed login attempt from ${ip} (${reason})`);
-      const locked = noteFailure(ip);
-      recordLogin({ ip, ok: false, app: client.client_name || null, reason });
-      onLogin({ ok: false, ip, app: client.client_name, reason, locked });
-      // With two-factor on, one message for both, so the page never says the password was right.
-      const message = totpSecret ? 'The password or code is wrong. Use the newest code from your authenticator app.' : 'Incorrect password.';
-      page(locked ? 'Too many wrong tries. This address is locked out for 15 minutes.' : message, locked ? 429 : 401);
-      return;
-    }
-    failures.delete(ip);
-    recordLogin({ ip, ok: true, app: client.client_name || null });
-    onLogin({ ok: true, ip, app: client.client_name });
     const authCode = randomToken();
     authCodes.set(authCode, {
       clientId: client_id,
@@ -456,5 +461,5 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
   /** How many sign-in codes and addresses with wrong tries are held in memory (for tests and diagnostics). */
   const pending = () => ({ codes: authCodes.size, addresses: failures.size });
 
-  return { provider, approveHandler, listSessions, revokeClient, revokeAll, prune, loginHistory, pending };
+  return { provider, approveHandler, passwordAttempt, listSessions, revokeClient, revokeAll, prune, loginHistory, pending };
 }
