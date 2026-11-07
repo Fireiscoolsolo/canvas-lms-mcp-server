@@ -22,6 +22,9 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **An app's name can't run as code on the status page.** Anyone could register an app, so a crafted name could run in your browser when you clicked Sign out. A name with an apostrophe also skipped the "are you sure" prompt. Both are fixed.
 - **Password pages are harder to abuse.** The login and status pages now refuse to be framed, aren't cached, send no referrer, and the browser won't run any script they didn't ship with.
 
+### Fixed
+- **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
+
 ### If your server stops starting after this update
 Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.
 

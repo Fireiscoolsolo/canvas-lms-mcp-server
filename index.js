@@ -55,6 +55,9 @@ import { createFileShare } from './file-share.js';
 import { createStatusRouter } from './status-page.js';
 import { startupProblems } from './startup-check.js';
 
+// The MCP SDK's HTTP transport uses the global crypto, which Node 18 only has behind a flag.
+if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;
+
 dotenv.config({ quiet: true });
 
 const DIR = process.cwd();
