@@ -326,8 +326,9 @@ Only the computer that is serving sends alerts, and it remembers what it already
 - **No quiz-taking:** quiz attempt endpoints are deliberately not included, and writes to them are refused for every tool, however the address is written.
 - **Loopback only:** the server listens on `127.0.0.1`. The only way in from outside is the tunnel.
 - **It won't start open:** with a public address it refuses to start without a real password, and it refuses the example values from `.env.example`.
-- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per address, and five wrong passwords lock that address out for 15 minutes. Access tokens last 1 hour, and refresh tokens are replaced every time they're used. The password check takes the same time whatever you type.
-- **Two-factor codes (optional):** `canvas-lms-mcp-remote totp-setup` adds a code from your authenticator app to the login and status pages.
+- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per address, and five wrong passwords lock that address out for 15 minutes. Access tokens last 1 hour, and refresh tokens are replaced every time they're used. An old refresh token used again signs that sign-in out. Tokens meant for another server are refused. The password check takes the same time whatever you type.
+- **Look-alike apps are flagged:** the login page shows where you go back to after connecting, and warns you when an app calls itself Claude or ChatGPT but would send your sign-in somewhere else.
+- **Two-factor codes (optional):** `canvas-lms-mcp-remote totp-setup` adds a code from your authenticator app to the login and status pages. Each code works once.
 - **You can see and end sign-ins:** the status page lists signed-in apps and recent sign-in attempts. Unused apps are signed out after 90 days, and `rotate-password` signs everyone out.
 - **Separate coordination secret:** the endpoints the computers use to coordinate need a separate shared secret, compared in constant time. Too many wrong guesses lock that address out.
 - **No secrets in logs:** tokens, passwords and webhook keys are removed from every log line. The public `/healthz` check says nothing about your account.

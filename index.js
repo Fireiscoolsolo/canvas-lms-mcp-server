@@ -205,8 +205,8 @@ async function main() {
   }
 
   if (AUTH_ENABLED) {
-    auth = createOAuthProvider({ password: MCP_PASSWORD, storePath: OAUTH_STORE_PATH, historyPath: path.join(DIR, 'login-history.json'), totpSecret: TOTP_SECRET, onLogin: securityAlert });
     const resourceUrl = new URL(`${PUBLIC_URL}/mcp`);
+    auth = createOAuthProvider({ password: MCP_PASSWORD, storePath: OAUTH_STORE_PATH, historyPath: path.join(DIR, 'login-history.json'), totpSecret: TOTP_SECRET, resourceUrl: resourceUrl.href, onLogin: securityAlert });
     app.use(mcpAuthRouter({
       provider: auth.provider,
       issuerUrl: new URL(PUBLIC_URL),

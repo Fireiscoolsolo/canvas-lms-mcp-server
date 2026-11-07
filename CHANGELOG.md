@@ -21,9 +21,15 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Guessing the cluster secret gets locked out** after 20 wrong tries from one address in 15 minutes. Correct requests never count, so heartbeats are safe.
 - **An app's name can't run as code on the status page.** Anyone could register an app, so a crafted name could run in your browser when you clicked Sign out. A name with an apostrophe also skipped the "are you sure" prompt. Both are fixed.
 - **Password pages are harder to abuse.** The login and status pages now refuse to be framed, aren't cached, send no referrer, and the browser won't run any script they didn't ship with.
+- **The login page says where your sign-in goes.** Anyone who knows your address could register an app called "Claude" that sends the sign-in to their own site, and your real login page would have asked for your password. The page now names the site you go back to, warns you when an app calls itself Claude or ChatGPT but goes somewhere else, and flags sites it doesn't know.
+- **Sign-ins are stricter.** An app has to register a return address, and a code only works with the address it was sent to. Only the `canvas` scope is granted. A token issued for another server's address is refused. At most 100 apps can be registered: old ones that never finished signing in make room, and signed-in apps are never removed.
+- **A stolen refresh token stops working.** Using a refresh token after it was replaced now signs that sign-in out, so a copied token and the real app can't both keep going. The app just asks for the password again.
+- **Two-factor codes work once**, across the login and status pages. With two-factor on, a wrong password and a wrong code get the same message, so the page never says the password was right.
+- Sign-in codes and wrong-password counts no longer pile up in memory, and sign-in error pages aren't cached.
 
 ### Fixed
 - **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
+- **Apps on the same computer can sign in on any port.** An app that came back on a different port than it registered got past the first sign-in step and was then refused at the password, although the standard allows it.
 
 ### If your server stops starting after this update
 Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.

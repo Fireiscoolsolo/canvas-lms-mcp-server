@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { passwordMatches } from './oauth-provider.js';
-import { verifyTotp } from './totp.js';
+import { acceptTotp } from './totp.js';
 
 const COOKIE = 'canvas_status';
 const SESSION_MS = 12 * 3600000;
@@ -99,7 +99,7 @@ export function createStatusRouter({ password, totpSecret = '', getStatus, revok
     res.type('html').send(dashboardPage(await getStatus(), csrf(req), fmt));
   });
   router.post('/login', limiter || ((_q, _s, next) => next()), (req, res) => {
-    const ok = passwordMatches(req.body?.password, password) && (!totpSecret || verifyTotp(totpSecret, req.body?.code, { now: now() }));
+    const ok = passwordMatches(req.body?.password, password) && (!totpSecret || acceptTotp(totpSecret, req.body?.code, { now: now() }));
     if (!ok) return res.status(401).type('html').send(loginPage({ error: 'That password (or code) is wrong.', totp: Boolean(totpSecret) }));
     const exp = String(now() + SESSION_MS);
     res.set('Set-Cookie', cookie(`${exp}.${sign(exp)}`, SESSION_MS / 1000));
