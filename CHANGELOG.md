@@ -40,6 +40,9 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
 - **Apps on the same computer can sign in on any port.** An app that came back on a different port than it registered got past the first sign-in step and was then refused at the password, although the standard allows it.
 
+### Releases
+- **A publish from GitHub checks itself first.** Every file that names the version has to agree, the changelog needs a section for it, and the shared tools have to match the other edition. The actions it uses are pinned to exact versions, and the MCP Registry publisher is a fixed release checked against its published checksum. Every test run now also fails if the shared tools differ between the two editions.
+
 ### If your server stops starting after this update
 Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.
 
