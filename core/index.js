@@ -56,7 +56,7 @@ const INSTRUCTIONS = [
  */
 export function createCanvasServer({
   env = process.env, version = '0.0.0', defaultDownloadDir, stateDir = null, log = () => {},
-  elicitation = true, fileLink = localFileLink, missingTokenHelp = '', secrets = [], fetchImpl, toolTimeoutMs,
+  elicitation = true, fileLink = localFileLink, missingTokenHelp = '', secrets = [], fetchImpl, toolTimeoutMs, downloadLimitBytes,
 } = {}) {
   const cfg = readConfig(env, { defaultDownloadDir });
   const hidden = [cfg.token, ...secrets];
@@ -85,7 +85,7 @@ export function createCanvasServer({
   const tokenWatch = createTokenWatch({ canvas, token: cfg.token, base: cfg.base, log: safeLog });
   const state = createStateStore(stateDir);
   const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog, ...(toolTimeoutMs ? { toolTimeoutMs } : {}) });
-  const shared = createShared({ canvas, cfg, dates, fileLink, privateDirs: stateDir ? [stateDir] : [], ...(fetchImpl ? { fetchImpl } : {}) });
+  const shared = createShared({ canvas, cfg, dates, fileLink, privateDirs: stateDir ? [stateDir] : [], ...(fetchImpl ? { fetchImpl } : {}), ...(downloadLimitBytes ? { downloadLimitBytes } : {}) });
 
   /** Refuse to SEND text that still carries fence markers: quoted Canvas content was passed through unfiltered. */
   const assertClean = (text, label = 'content') => {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { extractFileText, MAX_FILE_BYTES } from '../file-text.js';
 
 export default function register(ctx) {
-  const { fetchFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
+  const { readFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
 
   const J = 'content';
 
@@ -62,10 +62,10 @@ export default function register(ctx) {
       const meta = await canvas.get(`/files/${a.file_id}`);
       const name = meta.display_name || meta.filename || `file-${a.file_id}`;
       if (meta.size > MAX_FILE_BYTES) return fail(`"${name}" is ${Math.round(meta.size / 1048576)} MB, which is too big to read here (limit 25 MB). Use download_file to save it instead.`);
-      const res = await fetchFile(meta.url);
+      const bytes = await readFile(meta.url, MAX_FILE_BYTES, `"${name}"`);
       let extracted;
       try {
-        extracted = await extractFileText(Buffer.from(await res.arrayBuffer()), { name, contentType: meta['content-type'], html2text });
+        extracted = await extractFileText(bytes, { name, contentType: meta['content-type'], html2text });
       } catch (e) {
         return fail(e.message);
       }
@@ -120,7 +120,7 @@ export default function register(ctx) {
       const t = a.track_id ? tracks.find((x) => String(x.id) === String(a.track_id)) : (tracks.find((x) => /^en/i.test(x.locale || '')) || tracks[0]);
       if (!t) return fail('Requested caption track not found.');
       let content = t.content;
-      if (!content && t.url) content = await (await fetchFile(t.url)).text();
+      if (!content && t.url) content = (await readFile(t.url, MAX_FILE_BYTES, 'This caption track')).toString('utf8');
       if (!content) return fail('Caption track had no retrievable content.');
       const plain = content.replace(/^WEBVTT.*$/m, '').replace(/^\d+$/gm, '').replace(/^[\d:.,]+\s*-->\s*[\d:.,]+.*$/gm, '').replace(/\n{2,}/g, '\n').trim();
       const saved = await saveDownload({ text: plain, dir: a.dest_dir || DOWNLOAD_DIR, name: `captions-${a.media_id}-${t.locale || 'xx'}.txt`, contentType: 'text/plain' });

@@ -2,9 +2,13 @@
 // can't hide what they are, and long lists say when they were cut short. Fake Canvas and temp folders only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import JSZip from 'jszip';
 import { connect } from './fake-canvas.js';
 import { normalizeBase } from '../../core/canvas-client.js';
 import { readConfig } from '../../core/config.js';
+import { extractFileText } from '../../core/file-text.js';
 
 // ---------------------------------------------------------------------------------------------------------------
 // F23: the token never travels unencrypted
@@ -32,5 +36,104 @@ test('the change is reported, so nobody wonders why the address looks different'
   try {
     s.built.start();
     assert.ok(lines.some((l) => /http:\/\/.*https:\/\//.test(l)), lines.join('\n'));
+  } finally { await s.close(); }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// F18: files that are far bigger than they look
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A Word file whose text is `bytes` long, and which can claim a much smaller size inside, as a crafted one can. */
+async function wordFile(bytes, { claim } = {}) {
+  const zip = new JSZip();
+  zip.file('word/document.xml', `<w:document><w:p><w:t>${'a'.repeat(bytes)}</w:t></w:p></w:document>`);
+  const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } });
+  if (claim === undefined) return buf;
+  // Rewrite the uncompressed size in the local header (offset 22) and the central directory (offset 24).
+  for (const [signature, offset] of [[0x04034b50, 22], [0x02014b50, 24]]) {
+    for (let i = 0; i + 4 <= buf.length; i++) if (buf.readUInt32LE(i) === signature) { buf.writeUInt32LE(claim, i + offset); break; }
+  }
+  return buf;
+}
+
+test('an Office file that expands far past its size is refused, without expanding it all', async () => {
+  const bomb = await wordFile(6e6);
+  assert.ok(bomb.length < 50000, `the file itself is small: ${bomb.length} bytes`);
+  const started = Date.now();
+  await assert.rejects(extractFileText(bomb, { name: 'notes.docx', maxUnzipped: 1e6 }), /too big|expands/i);
+  assert.ok(Date.now() - started < 3000);
+  const fine = await extractFileText(await wordFile(1000), { name: 'notes.docx', maxUnzipped: 1e6 });
+  assert.equal(fine.text.length, 1000);
+});
+
+test('an Office file that lies about how big its contents are is still stopped', async () => {
+  const liar = await wordFile(6e6, { claim: 100 });
+  await assert.rejects(extractFileText(liar, { name: 'notes.docx', maxUnzipped: 1e6 }), /too big|expands/i);
+});
+
+/** A download that sends `megabytes` 1 MB pieces, made as they're asked for, and counts how many were taken. */
+function bigDownload(megabytes, { contentLength } = {}) {
+  const sent = { pieces: 0 };
+  const piece = new Uint8Array(1024 * 1024);
+  const body = new ReadableStream({
+    pull(controller) {
+      if (sent.pieces >= megabytes) { controller.close(); return; }
+      sent.pieces++;
+      controller.enqueue(piece);
+    },
+  });
+  const headers = { 'content-type': 'application/octet-stream', ...(contentLength ? { 'content-length': String(contentLength) } : {}) };
+  return { sent, response: () => new Response(body, { status: 200, headers }) };
+}
+
+const serving = (download) => (base) => async (url, opts) => (/\/files\/\d+\/download$/.test(new URL(url).pathname) ? download.response() : base(url, opts));
+
+test('reading a file stops at the size limit as the bytes arrive, whatever Canvas said its size was', { timeout: 60000 }, async () => {
+  const download = bigDownload(40);
+  const s = await connect({ wrapFetch: serving(download) });
+  try {
+    const r = await s.client.callTool({ name: 'read_course_file', arguments: { file_id: '1' } });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /too big/i);
+    assert.ok(download.sent.pieces <= 27, `${download.sent.pieces} MB were pulled before it stopped`);
+  } finally { await s.close(); }
+});
+
+test('a download that says it is too big is refused before any of it is fetched', { timeout: 60000 }, async () => {
+  const download = bigDownload(10, { contentLength: 10 * 1024 * 1024 });
+  const s = await connect({ wrapFetch: serving(download), serverOptions: { downloadLimitBytes: 5 * 1024 * 1024 } });
+  try {
+    const r = await s.client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /too big/i);
+    assert.equal(download.sent.pieces <= 1, true, `${download.sent.pieces} MB were pulled`);
+  } finally { await s.close(); }
+});
+
+test('a download that runs past the limit is stopped, and leaves nothing half-written behind', { timeout: 60000 }, async () => {
+  const download = bigDownload(8);
+  const s = await connect({ wrapFetch: serving(download), serverOptions: { downloadLimitBytes: 5 * 1024 * 1024 } });
+  try {
+    const r = await s.client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /too big/i);
+    const folder = path.join(s.dir, 'downloads');
+    assert.deepEqual(fs.existsSync(folder) ? fs.readdirSync(folder) : [], [], 'no file and no partial file');
+  } finally { await s.close(); }
+});
+
+test('a big download is saved whole, and the same file twice is saved once', { timeout: 60000 }, async () => {
+  const first = bigDownload(12);
+  const s = await connect({ wrapFetch: serving(first) });
+  try {
+    const one = await s.client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.ok(!one.isError, one.content[0].text);
+    const saved = JSON.parse(one.content[0].text).saved_to;
+    assert.equal(fs.statSync(saved).size, 12 * 1024 * 1024);
+    const again = bigDownload(12);
+    first.response = again.response;
+    const two = await s.client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.equal(JSON.parse(two.content[0].text).saved_to, saved);
+    assert.deepEqual(fs.readdirSync(path.dirname(saved)), [path.basename(saved)]);
   } finally { await s.close(); }
 });

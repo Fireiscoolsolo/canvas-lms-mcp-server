@@ -7,6 +7,103 @@ import { pathToFileURL } from 'node:url';
 import { CanvasError, fetchWithRetry, hostOf, refuseBlocked } from './canvas-client.js';
 
 const TRANSFER_TIMEOUT_MS = 10 * 60000;
+// The most a single download may write to disk. Downloads stream to disk, so this only stops one that never ends.
+export const DOWNLOAD_LIMIT_BYTES = 4 * 1024 * 1024 * 1024;
+
+const megabytes = (n) => `${Math.round(n / 1048576).toLocaleString('en-US')} MB`;
+const tooBigError = (what, max) => new CanvasError(`${what} is too big: the limit here is ${megabytes(max)}. Download it from Canvas in your browser instead.`, { code: 'TOO_BIG' });
+
+/** Refuse a response that says up front it is bigger than `max`. */
+function checkDeclaredSize(res, max, what) {
+  const declared = Number(res.headers.get('content-length'));
+  if (declared > max) {
+    res.body?.cancel().catch(() => {});
+    throw tooBigError(what, max);
+  }
+}
+
+/** A response body as a Buffer, never more than `max` bytes. Stops reading as soon as the limit is passed. */
+export async function readLimited(res, max, what = 'This file') {
+  checkDeclaredSize(res, max, what);
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) { await reader.cancel().catch(() => {}); throw tooBigError(what, max); }
+    parts.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+  }
+  return Buffer.concat(parts, size);
+}
+
+/** SHA-256 of a file on disk, read a piece at a time so a big file never sits in memory. */
+function fileDigest(file) {
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  try {
+    const piece = Buffer.alloc(1024 * 1024);
+    for (let n; (n = fs.readSync(fd, piece, 0, piece.length, null)) > 0;) hash.update(piece.subarray(0, n));
+  } finally { fs.closeSync(fd); }
+  return hash.digest('hex');
+}
+
+/**
+ * Give a finished temp file its name in `folder`, the way writeNew does for bytes in memory: never over an existing
+ * file. If a file of that name already holds the same bytes, that one is kept and the temp file goes.
+ */
+function placeNew(folder, name, tmp, size, digest) {
+  const { name: stem, ext } = path.parse(name);
+  const same = (dest) => fs.statSync(dest).size === size && fileDigest(dest) === digest;
+  try {
+    for (let n = 0; n < 1000; n++) {
+      const dest = path.join(folder, n ? `${stem} (${n})${ext}` : name);
+      try {
+        fs.linkSync(tmp, dest); // fails if dest exists, so nothing is ever replaced
+        return dest;
+      } catch (e) {
+        if (e.code === 'EEXIST') { if (same(dest)) return dest; continue; }
+        if (!['EPERM', 'ENOTSUP', 'EXDEV', 'ENOSYS'].includes(e.code)) throw e;
+        // A drive without hard links: copy instead, still refusing to replace anything.
+        try { fs.copyFileSync(tmp, dest, fs.constants.COPYFILE_EXCL); return dest; } catch (e2) {
+          if (e2.code !== 'EEXIST') throw e2;
+          if (same(dest)) return dest;
+        }
+      }
+    }
+    throw new CanvasError(`There are already 1,000 files called ${name} in ${folder}.`);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+/** Stream a response into `folder` as `name`, never more than `max` bytes, with nothing half-written left on failure. */
+async function streamToFolder(res, folder, name, max) {
+  checkDeclaredSize(res, max, `"${name}"`);
+  const tmp = path.join(folder, `.canvas-download-${crypto.randomBytes(6).toString('hex')}.part`);
+  const hash = crypto.createHash('sha256');
+  const out = fs.openSync(tmp, 'wx');
+  let size = 0;
+  try {
+    const reader = res.body?.getReader();
+    for (;;) {
+      const { done, value } = reader ? await reader.read() : { done: true };
+      if (done) break;
+      size += value.length;
+      if (size > max) { await reader.cancel().catch(() => {}); throw tooBigError(`"${name}"`, max); }
+      hash.update(value);
+      fs.writeSync(out, value);
+    }
+    fs.closeSync(out);
+  } catch (e) {
+    try { fs.closeSync(out); } catch { /* already closed */ }
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+  return { dest: placeNew(folder, name, tmp, size, hash.digest('hex')), bytes: size };
+}
 
 export const FIELDS = {
   COURSE_FIELDS: ['id', 'name', 'course_code', 'workflow_state', 'start_at', 'end_at', 'term', 'enrollments', 'total_students', 'time_zone', 'public_description'],
@@ -82,7 +179,7 @@ export function localFileLink(abs, { name, mimeType, bytes } = {}) {
 // Apps on the same computer can open a folder too; a remote link (see the Remote Edition) can only serve files.
 localFileLink.folders = true;
 
-export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fetchImpl = fetch, privateDirs = [] }) {
+export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fetchImpl = fetch, privateDirs = [], downloadLimitBytes = DOWNLOAD_LIMIT_BYTES }) {
   /** Refuse a file that holds keys, sign-ins or this server's own settings. Files saved to the download folder are fine. */
   function assertNotPrivate(abs) {
     const real = realPath(abs);
@@ -198,14 +295,26 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
    */
   async function saveDownload({ url, text, dir = cfg.downloadDir, name, contentType }) {
     const folder = downloadFolder(dir);
-    const data = text !== undefined ? Buffer.from(text) : Buffer.from(await (await fetchFile(url)).arrayBuffer());
-    const dest = writeNew(folder, safeFileName(name), data);
-    const bytes = data.length;
+    let dest;
+    let bytes;
+    if (text !== undefined) {
+      const data = Buffer.from(text);
+      dest = writeNew(folder, safeFileName(name), data);
+      bytes = data.length;
+    } else {
+      // Streamed to disk, so a big file never has to fit in memory.
+      ({ dest, bytes } = await streamToFolder(await fetchFile(url), folder, safeFileName(name), downloadLimitBytes));
+    }
     return { saved_to: dest, bytes, link: fileLink(dest, { name: path.basename(dest), mimeType: contentType, bytes }) };
+  }
+
+  /** A Canvas file's bytes in memory, for reading its text. Never more than `max`, whatever Canvas says its size is. */
+  async function readFile(url, max, what) {
+    return readLimited(await fetchFile(url), max, what);
   }
 
   /** A link to a folder of saved files, where the app can open folders (same computer only); otherwise null. */
   const folderLink = (dir, name) => (fileLink.folders ? { type: 'resource_link', uri: pathToFileURL(dir).href, name, description: 'Folder on this computer' } : null);
 
-  return { uploadFile, filePreview, assignmentPreview, activeCourses, fetchFile, saveDownload, downloadFolder, folderLink };
+  return { uploadFile, filePreview, assignmentPreview, activeCourses, fetchFile, readFile, saveDownload, downloadFolder, folderLink };
 }
