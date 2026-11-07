@@ -6,6 +6,12 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 ## Unreleased
 
 ### Security
+- **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN# Changelog
+
+All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
+([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
+
+ or `COM¹`. A long name is shortened without losing its extension.
 - **Files can't be bigger than they look.** A Word or PowerPoint file is read only up to 64 MB of text inside, so a small crafted file that expands to gigabytes is refused instead of taking the server down, even when it lies about its size. `read_course_file` stops at 25 MB as the file arrives, whatever Canvas says its size is. Downloads are now written to disk as they arrive instead of being held in memory, up to 4 GB, and a failed one leaves nothing half-written.
 - **The token is never sent unencrypted.** A school address written with `http://` is now used with `https://`, and the log says so. Only a Canvas running on the same computer keeps `http://`.
 - **Your Canvas token only goes to Canvas.** Every request now passes one check, so no tool can send the token to another address, whether that address came from the model, a next-page link, a file record or an upload. Files stored on another host are fetched without it. `download_submission_attachment` only takes addresses on your Canvas. If your school uses a second address for Canvas, use that one in `CANVAS_BASE_URL`.
@@ -35,6 +41,7 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Secret files are private.** On Linux and macOS, `.env`, its backups, `oauth-store.json` and `login-history.json` are now written so only your user can read them. `.env.backup-*` and temp files are now in `.gitignore`.
 
 ### Fixed
+- **Long lists say when they were cut short.** When a tool reads as many items as it allows and Canvas has more, the answer now starts with a heads-up, instead of silently treating the first ones as everything. A structured answer is also kept within the size limit: its longest list keeps as many items as fit, and the answer says so.
 - **Two computers no longer both serve on Cloudflare Tunnel.** Cloudflare runs every connector it is given, so a standby that lost internet for a minute and took over kept serving alongside the first computer, and apps failed at random. A serving computer now asks the public address who answers it, and when another computer does, the one that took over more recently steps back. A step-down request can now name the computer it is for, so it can't land on the wrong one.
 - **One slow tool no longer holds up every device.** Requests to `/mcp` were handled one at a time, so a five-minute export kept your phone waiting five minutes for anything at all. Each request now gets its own server, sharing one Canvas connection, so other requests answer straight away.
 - **A tool the app stops waiting for stops asking Canvas.** When your AI app cancels a call or the connection drops, a tool that only reads stops before its next Canvas request instead of running to the end. Anything that changes Canvas always finishes, so a submission never stops half way. A read that runs for 20 minutes is stopped and says so.

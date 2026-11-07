@@ -118,12 +118,20 @@ export const FIELDS = {
  * Canvas display names are chosen by whoever uploaded the file, so they are never trusted as paths.
  */
 export function safeFileName(name, fallback = 'download') {
-  const cleaned = String(name || '')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+  let cleaned = String(name || '').normalize('NFC')
+    // Invisible and direction-changing characters: "notes\u202Efdp.exe" shows as "notesexe.pdf" in a file list.
+    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_')
     .replace(/^[.\s]+/, '')
-    .replace(/[.\s]+$/, '')
-    .slice(0, 180);
-  const reserved = /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(cleaned);
+    .replace(/[.\s]+$/, '');
+  if (cleaned.length > 180) {
+    // Shorten the name, not the extension, so the file still opens with the right program.
+    const { name: stem, ext } = path.parse(cleaned);
+    const keep = ext.length <= 20 ? ext : '';
+    cleaned = stem.slice(0, 180 - keep.length).replace(/[.\s]+$/, '') + keep;
+  }
+  // Names Windows keeps for devices, with or without an extension, including CONIN$ and COM¹ to COM³.
+  const reserved = /^(con|prn|aux|nul|conin\$|conout\$|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])\s*(\.|$)/i.test(cleaned);
   return cleaned && !reserved ? cleaned : fallback;
 }
 

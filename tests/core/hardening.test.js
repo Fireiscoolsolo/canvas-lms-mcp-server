@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { connect } from './fake-canvas.js';
+import { connect, BASE } from './fake-canvas.js';
 import { normalizeBase } from '../../core/canvas-client.js';
 import { readConfig } from '../../core/config.js';
 import { extractFileText } from '../../core/file-text.js';
+import { safeFileName } from '../../core/shared.js';
 
 // ---------------------------------------------------------------------------------------------------------------
 // F23: the token never travels unencrypted
@@ -135,5 +136,64 @@ test('a big download is saved whole, and the same file twice is saved once', { t
     const two = await s.client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
     assert.equal(JSON.parse(two.content[0].text).saved_to, saved);
     assert.deepEqual(fs.readdirSync(path.dirname(saved)), [path.basename(saved)]);
+  } finally { await s.close(); }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// F25: file names, long answers and long lists
+// ---------------------------------------------------------------------------------------------------------------
+
+test("a file name can't hide what kind of file it is", () => {
+  const name = safeFileName('Syllabus‮fdp.exe');
+  assert.ok(!/[؜​-‏‪-‮⁦-⁩﻿]/.test(name), JSON.stringify(name));
+  assert.match(name, /.exe$/);
+  assert.equal(safeFileName('notes​.pdf'), 'notes.pdf');
+});
+
+test('names Windows keeps for devices are never used', () => {
+  for (const n of ['CON', 'con.txt', 'CONIN$', 'conout$.log', 'COM¹.txt', 'LPT³', 'COM1.pdf', 'nul .txt']) assert.equal(safeFileName(n), 'download', n);
+  assert.equal(safeFileName('Concert notes.pdf'), 'Concert notes.pdf');
+  assert.equal(safeFileName('Computer basics.pdf'), 'Computer basics.pdf');
+});
+
+test('a long name is shortened but keeps its extension', () => {
+  const n = safeFileName(`${'a'.repeat(300)}.pdf`);
+  assert.ok(n.length <= 180, String(n.length));
+  assert.match(n, /.pdf$/);
+});
+
+const soon = new Date(Date.now() + 86400000).toISOString();
+const plannerItem = (i, title = `Assignment ${i}`) => ({ plannable_type: 'assignment', plannable_id: String(i), course_id: '1', plannable: { title, due_at: soon }, html_url: `/courses/1/assignments/${i}` });
+
+test('a structured answer is kept within the size limit too, and says it was shortened', async () => {
+  const many = Array.from({ length: 150 }, (_, i) => plannerItem(i, `Assignment ${i} ${'x'.repeat(200)}`));
+  const s = await connect({ env: { CANVAS_MAX_RESPONSE_CHARS: '5000' }, override: (m, p) => (p === '/planner/items' ? { body: many } : undefined) });
+  try {
+    const r = await s.client.callTool({ name: 'list_upcoming_assignments', arguments: {} });
+    assert.ok(!r.isError, r.content[0].text.slice(0, 300));
+    assert.ok(JSON.stringify(r.structuredContent).length <= 5000, String(JSON.stringify(r.structuredContent).length));
+    assert.ok(r.structuredContent.items.length > 0 && r.structuredContent.items.length < 150, String(r.structuredContent.items.length));
+    assert.match(r.content[0].text, /shortened/i);
+  } finally { await s.close(); }
+});
+
+const CUT = /Canvas had more than this server reads in one go/;
+
+test("a list cut short at the server's limit says so", async () => {
+  const page = Array.from({ length: 50 }, (_, i) => plannerItem(i));
+  const s = await connect({ override: (m, p) => (p === '/planner/items' ? { body: page, headers: { link: `<${BASE}/api/v1/planner/items?page=2>; rel="next"` } } : undefined) });
+  try {
+    const r = await s.client.callTool({ name: 'list_upcoming_assignments', arguments: {} });
+    assert.match(r.content[0].text, CUT);
+  } finally { await s.close(); }
+});
+
+test('a complete list, or one the tool already pages, has no such note', async () => {
+  const s = await connect({ override: (m, p) => (p.endsWith('/assignments') ? { body: [{ id: '1', name: 'HW' }], headers: { link: `<${BASE}/api/v1/courses/1/assignments?page=2>; rel="next"` } } : undefined) });
+  try {
+    const whole = await s.client.callTool({ name: 'list_upcoming_assignments', arguments: {} });
+    assert.doesNotMatch(whole.content[0].text, CUT);
+    const paged = await s.client.callTool({ name: 'list_assignments', arguments: { course_id: '1' } });
+    assert.doesNotMatch(paged.content[0].text, CUT);
   } finally { await s.close(); }
 });

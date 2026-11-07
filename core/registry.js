@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ElicitResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 import { CanvasError, callContext, hideAddresses } from './canvas-client.js';
-import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, DEFAULT_PAGE_SIZE } from './format.js';
+import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, trimToFit, DEFAULT_PAGE_SIZE } from './format.js';
 import { applyFence, fenceComments, fenceProse } from './text.js';
 
 /** The curated subset served when CANVAS_PROFILE=core. */
@@ -186,7 +186,18 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
     const first = result?.content?.[0];
     if (first?.type === 'text') {
       first.text = capText(first.text, cfg.maxChars);
-      const heads = result.isError ? null : notice();
+      if (result.structuredContent !== undefined) {
+        const { value, cut } = trimToFit(result.structuredContent, cfg.maxChars);
+        if (cut) {
+          result.structuredContent = value;
+          first.text = `${first.text}\n\n[The structured copy of this answer was shortened to fit: ${cut}. Ask for fewer to see them all.]`;
+        }
+      }
+      const cuts = callContext.getStore()?.cut || [];
+      const lists = cuts.length && !result.isError
+        ? `Heads-up: Canvas had more than this server reads in one go, so ${[...new Set(cuts.map((c) => `${c.path.replace(/\?.*$/, '').replace(/\d+/g, 'N')} stopped at ${c.count} items`))].join('; ')}. Totals and lists here may be incomplete. Narrow the request, such as one course or a shorter date range, to see the rest.`
+        : null;
+      const heads = [lists, result.isError ? null : notice()].filter(Boolean).join('\n\n');
       if (heads) first.text = `${heads}\n\n${first.text}`;
     }
     return result;
@@ -247,7 +258,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         }
       };
       // A change to Canvas always runs to the end, so it never stops between its steps.
-      if (write) return run(extra.signal);
+      if (write) return callContext.run({ cut: [] }, () => run(extra.signal));
       // Anything else stops asking Canvas when the app gives up on it, or once it has run too long.
       const stop = new AbortController();
       const cancel = () => stop.abort();
@@ -261,7 +272,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         }, toolTimeoutMs);
         timer.unref?.();
       });
-      const work = callContext.run({ signal: stop.signal }, () => run(stop.signal));
+      const work = callContext.run({ signal: stop.signal, cut: [] }, () => run(stop.signal));
       try {
         return await Promise.race([work, ceiling]);
       } finally {
@@ -288,7 +299,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         if (paginate) {
           const size = Math.min(a.limit || Math.min(max, DEFAULT_PAGE_SIZE), 500);
           const page = a.page || 1;
-          const all = await canvas.paginate(p, q, { max: page * size + 1, ttl });
+          const all = await canvas.paginate(p, q, { max: page * size + 1, ttl, quiet: true });
           ({ rows: data, note } = pageOf(all, { page, size }));
         } else {
           data = await canvas.get(p, q, { ttl });

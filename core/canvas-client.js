@@ -363,12 +363,15 @@ export class CanvasClient {
    * Follow rel="next" Link headers until exhausted or `max` items collected.
    * Header names are not case-guaranteed, so parsing is case-insensitive.
    */
-  async paginate(p, params, { max = 500, ttl } = {}) {
+  async paginate(p, params, { max = 500, ttl, quiet = false } = {}) {
     const key = `PAGES ${this.cacheKey('GET', p, params)}|${max}`;
     const useTtl = ttl === undefined ? this.ttl : ttl;
+    // A list that stops at `max` or the page limit while Canvas has more is noted on the tool call, so its answer
+    // can say so. `quiet` is for callers that page on purpose and say so themselves.
+    const noteCut = (count) => { if (!quiet) callContext.getStore()?.cut?.push({ path: String(p), count }); };
     if (useTtl > 0) {
       const hit = this.cache.get(key);
-      if (hit && Date.now() - hit.at < useTtl) return hit.data;
+      if (hit && Date.now() - hit.at < useTtl) { if (hit.cut) noteCut(hit.data.length); return hit.data; }
     }
     const out = [];
     let next = this.buildUrl(p, { per_page: 100, ...(params || {}) });
@@ -381,7 +384,9 @@ export class CanvasClient {
       next = parseNextLink(link);
     }
     const sliced = out.slice(0, max);
-    if (useTtl > 0) this.cache.set(key, { at: Date.now(), data: sliced });
+    const cut = out.length > max || (Boolean(next) && (out.length >= max || guard >= 25));
+    if (cut) noteCut(sliced.length);
+    if (useTtl > 0) this.cache.set(key, { at: Date.now(), data: sliced, cut });
     return sliced;
   }
 
