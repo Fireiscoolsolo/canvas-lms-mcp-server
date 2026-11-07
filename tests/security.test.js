@@ -146,3 +146,52 @@ test('guessing the cluster secret gets locked out, and the real computers are no
     await s.stop();
   }
 });
+
+const HOSTILE = "x'+(document.title='XSS-RAN',event.preventDefault(),(()=>{throw 0})())+'";
+const row = (app) => ({ sessions: [{ client_id: 'c1', app, signed_in: false, registered: '2026-11-01T00:00:00Z' }] });
+
+test('an app name can never become code on the status page', () => {
+  for (const app of [HOSTILE, 'x" onmouseover="alert(1)', '</td><script>alert(1)</script>', "O'Brien App"]) {
+    const html = dashboardPage(row(app), 'csrf');
+    assert.doesNotMatch(html, /\son[a-z]+\s*=\s*["']/i, `no inline event handlers: ${app}`);
+    assert.doesNotMatch(html, /<script>alert/);
+    assert.ok(html.includes(`data-app="${app.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}"`), app);
+  }
+});
+
+test('password pages can\'t be framed, cached or sent a stranger\'s script', { timeout: 30000 }, async () => {
+  const s = await start('index.js', GOOD);
+  try {
+    assert.equal(s.ready, true, s.output());
+    const base = `http://127.0.0.1:${s.port}`;
+    const status = await fetch(`${base}/status`);
+    const csp = status.headers.get('content-security-policy');
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.equal(status.headers.get('referrer-policy'), 'no-referrer');
+
+    const client = await (await fetch(`${base}/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'App', redirect_uris: ['https://ok.example/cb'], token_endpoint_auth_method: 'none' }) })).json();
+    const challenge = crypto.createHash('sha256').update('verifier').digest('base64url');
+    const q = new URLSearchParams({ client_id: client.client_id, redirect_uri: 'https://ok.example/cb', response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' });
+    const login = await fetch(`${base}/authorize?${q}`);
+    const wrong = await fetch(`${base}/authorize/approve`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: client.client_id, redirect_uri: 'https://ok.example/cb', code_challenge: challenge, password: 'nope' }) });
+    for (const res of [login, wrong]) {
+      assert.equal(res.headers.get('x-frame-options'), 'DENY');
+      assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+    }
+    assert.doesNotMatch(login.headers.get('content-security-policy'), /form-action/, 'the form must be able to redirect back to the app');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('the one script on the status page is allowed by its hash, and nothing else is', async () => {
+  const html = dashboardPage(row('App'), 'csrf');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.equal(scripts.length, 1);
+  const { STATUS_CSP } = await import('../status-page.js');
+  assert.ok(STATUS_CSP.includes(`'sha256-${crypto.createHash('sha256').update(scripts[0]).digest('base64')}'`));
+  assert.doesNotMatch(STATUS_CSP, /script-src[^;]*unsafe-inline/);
+});

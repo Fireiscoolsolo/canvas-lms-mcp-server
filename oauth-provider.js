@@ -32,6 +32,15 @@ const LOCK_AFTER = 5; // wrong tries from one address...
 const LOCK_WINDOW_MS = 15 * 60 * 1000; // ...within this window lock that address out for the same time
 const HISTORY_MAX = 200;
 
+// The login page runs no scripts and can't be framed. No form-action rule: the form has to redirect back to the app.
+const LOGIN_PAGE_HEADERS = {
+  'Content-Type': 'text/html',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Cache-Control': 'no-store',
+};
+
 function readStore(storePath) {
   try {
     const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
@@ -149,7 +158,7 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
     },
 
     async authorize(client, params, res) {
-      res.set('Content-Type', 'text/html');
+      res.set(LOGIN_PAGE_HEADERS);
       res.send(renderLoginPage({
         clientId: client.client_id,
         clientName: client.client_name,
@@ -289,7 +298,7 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
     }
     const ip = req.ip;
     const page = (error, status) => {
-      res.set('Content-Type', 'text/html');
+      res.set(LOGIN_PAGE_HEADERS);
       res.status(status).send(renderLoginPage({ clientId: client_id, clientName: client.client_name, redirectUri: redirect_uri, state, codeChallenge: code_challenge, resource, scope, error, totp: Boolean(totpSecret) }));
     };
     const minutes = lockedFor(ip);

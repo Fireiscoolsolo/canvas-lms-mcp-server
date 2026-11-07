@@ -26,7 +26,13 @@ input{width:100%;padding:10px 12px;font-size:16px;border:1px solid var(--line);b
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;margin:0}
 @media (max-width:600px){dl{grid-template-columns:1fr}dt{margin-top:6px}}`;
 
-const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main></body></html>`;
+// The page's only script, kept apart from the data so an app name can only ever be text. App names come from open
+// registration, so anyone on the internet can choose one. The browser runs nothing else: see STATUS_CSP.
+const SIGN_OUT_PROMPT = "document.addEventListener('submit',function(e){var a=e.target.getAttribute('data-app');if(a!==null&&!confirm('Sign '+a+' out? It will need the password again.'))e.preventDefault()});";
+
+export const STATUS_CSP = `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${crypto.createHash('sha256').update(SIGN_OUT_PROMPT).digest('base64')}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+
+const page = (title, body, script = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`;
 
 export function loginPage({ error, totp }) {
   return page('Canvas server status', `<section style="max-width:380px;margin:12vh auto">
@@ -42,7 +48,7 @@ export function dashboardPage(s, csrf, fmt = (t) => (t ? new Date(t).toLocaleStr
   const tokenLine = days === undefined || days === null ? '<span class="muted">expiry unknown (your school hides it)</span>'
     : days < 0 ? '<span class="err">expired</span>' : `<span class="${days <= 7 ? 'warn' : 'ok'}">expires ${esc(fmt(s.token.expires_at))} (${days} day${days === 1 ? '' : 's'})</span>`;
   const sessions = (s.sessions || []).map((x) => `<tr><td>${esc(x.app)}</td><td>${x.signed_in ? '<span class="ok">signed in</span>' : '<span class="muted">not signed in</span>'}</td><td>${esc(fmt(x.last_used || x.registered)) || '<span class="muted">never</span>'}</td>
-<td><form method="POST" action="/status/sessions/${encodeURIComponent(x.client_id)}/sign-out" onsubmit="return confirm('Sign ${esc(x.app).replace(/'/g, '')} out? It will need the password again.')"><input type="hidden" name="csrf" value="${esc(csrf)}"><button type="submit">Sign out</button></form></td></tr>`).join('');
+<td><form method="POST" action="/status/sessions/${encodeURIComponent(x.client_id)}/sign-out" data-app="${esc(x.app)}"><input type="hidden" name="csrf" value="${esc(csrf)}"><button type="submit">Sign out</button></form></td></tr>`).join('');
   const logins = (s.logins || []).map((l) => `<tr><td>${esc(fmt(l.at))}</td><td>${l.ok ? '<span class="ok">signed in</span>' : `<span class="err">${esc(l.reason || 'failed')}</span>`}</td><td>${esc(l.app || '')}</td><td>${esc(l.ip || '')}</td></tr>`).join('');
   const cluster = (s.cluster || []).map((m) => `<tr><td>${esc(m.hostname)}${m.self ? ' <span class="muted">(this one)</span>' : ''}</td><td>${m.state === 'active' ? '<span class="ok">serving</span>' : esc(m.state)}</td><td>${esc(m.version || '')}</td><td>${esc(fmt(m.last_seen))}</td></tr>`).join('');
   const a = s.alerts || {};
@@ -65,7 +71,7 @@ export function dashboardPage(s, csrf, fmt = (t) => (t ? new Date(t).toLocaleStr
 <dt>Alerts</dt><dd>${a.on ? `<span class="ok">on</span> via ${esc((a.channels || []).join(', '))}` : '<span class="muted">off</span>'}</dd>
 ${a.on ? `<dt>About</dt><dd>${esc((a.types || []).join(', '))}</dd><dt>Checks</dt><dd>every ${esc(a.every_minutes)} minutes</dd>
 ${a.digest ? `<dt>Daily digest</dt><dd>${esc(a.digest)}</dd>` : ''}${a.quiet ? `<dt>Quiet hours</dt><dd>${esc(a.quiet)}</dd>` : ''}` : ''}</dl></section>
-<section><h2>Recent problems</h2>${(s.problems || []).length ? `<pre>${s.problems.map((p) => `${esc(fmt(p.at))}  ${esc(p.line)}`).join('\n')}</pre>` : '<p class="muted">Nothing has gone wrong recently.</p>'}</section>`);
+<section><h2>Recent problems</h2>${(s.problems || []).length ? `<pre>${s.problems.map((p) => `${esc(fmt(p.at))}  ${esc(p.line)}`).join('\n')}</pre>` : '<p class="muted">Nothing has gone wrong recently.</p>'}</section>`, SIGN_OUT_PROMPT);
 }
 
 /**
@@ -86,7 +92,7 @@ export function createStatusRouter({ password, totpSecret = '', getStatus, revok
 
   const router = express.Router();
   router.use(express.urlencoded({ extended: false }));
-  router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); res.set('X-Frame-Options', 'DENY'); next(); });
+  router.use((_req, res, next) => { res.set({ 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': STATUS_CSP, 'Referrer-Policy': 'no-referrer' }); next(); });
 
   router.get('/', async (req, res) => {
     if (!authed(req)) return res.type('html').send(loginPage({ totp: Boolean(totpSecret) }));
