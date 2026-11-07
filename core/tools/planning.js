@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { folderLink, tool, canvas, ok, omitEmpty, fence, html2text, localize, relativeDue, iso, daysFromNow, sleep, COURSE, TOKEN, TZ, DOWNLOAD_DIR, activeCourses, state, BASE, saveDownload, downloadFolder, fail, friendly } = ctx;
+  const { folderLink, tool, canvas, ok, omitEmpty, fence, fenceProse, html2text, localize, relativeDue, iso, daysFromNow, sleep, COURSE, TOKEN, TZ, DOWNLOAD_DIR, activeCourses, state, BASE, saveDownload, downloadFolder, fail, friendly } = ctx;
 
   const N = 'planning';
 
@@ -85,7 +85,7 @@ export default function register(ctx) {
         } catch { /* */ }
       }
       return ok(omitEmpty({
-        activity_stream_summary: summary,
+        activity_stream_summary: fenceProse(summary, 'activity stream'),
         unread_inbox_count: inbox?.unread_count ?? null,
         unread_conversations: convos.map((c) => ({ id: c.id, subject: c.subject, from: c.participants?.map((p) => p.name), last_message_at: c.last_message_at, context: c.context_name })),
         unread_discussions: unreadTopics,

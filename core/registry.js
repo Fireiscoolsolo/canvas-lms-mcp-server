@@ -6,7 +6,7 @@ import { ElicitResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 import { CanvasError, hideAddresses } from './canvas-client.js';
 import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, DEFAULT_PAGE_SIZE } from './format.js';
-import { applyFence, fenceComments } from './text.js';
+import { applyFence, fenceComments, fenceProse } from './text.js';
 
 /** The curated subset served when CANVAS_PROFILE=core. */
 export const CORE_TOOLS = new Set([
@@ -269,6 +269,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         if (fields) data = pick(data, fields);
         if (fenceFields) data = applyFence(data, fenceFields, name);
         if (comments) data = fenceComments(data, `${name.replace(/_/g, ' ')}`);
+        // Everything here came straight from Canvas, so any prose left at any depth is someone else's text.
+        data = fenceProse(data, name.replace(/_/g, ' '));
         return ok(omitEmpty(addLocalDates(data, dates.friendly)), note);
       },
     });

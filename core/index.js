@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { readConfig } from './config.js';
 import { CanvasClient, CanvasError, sleep } from './canvas-client.js';
 import { applyNetworkSettings } from './network.js';
-import { html2text, fence, applyFence, fenceComments, hasFenceMarkers, redact } from './text.js';
+import { html2text, fence, applyFence, fenceComments, fenceProse, hasFenceMarkers, redact } from './text.js';
 import { ok, fail, pick, omitEmpty, iso, daysFromNow, makeDates, addLocalDates } from './format.js';
 import { createRegistry } from './registry.js';
 import { createShared, FIELDS, localFileLink } from './shared.js';
@@ -81,7 +81,7 @@ export function createCanvasServer({
     ...reg, ...shared, ...FIELDS,
     canvas, cfg, state, tokenWatch, z, CanvasError,
     ok, fail, pick, omitEmpty, iso, daysFromNow, sleep, addLocalDates,
-    fence, html2text, applyFence, fenceComments, assertClean,
+    fence, html2text, applyFence, fenceComments, fenceProse, assertClean,
     localize: dates.localize, friendly: dates.friendly, relativeDue: dates.relativeDue, dayKey: dates.dayKey, dayLabel: dates.dayLabel,
     TOKEN: cfg.token, BASE: cfg.base, API: cfg.api, ALLOW_WRITES: cfg.allowWrites, PROFILE: cfg.profile, TZ: cfg.tz,
     CACHE_TTL: cfg.cacheTtl, DOWNLOAD_DIR: cfg.downloadDir, SERVER_NAME, SERVER_VERSION: version,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { extractFileText, MAX_FILE_BYTES } from '../file-text.js';
 
 export default function register(ctx) {
-  const { fetchFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
+  const { fetchFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
 
   const J = 'content';
 
@@ -108,7 +108,7 @@ export default function register(ctx) {
     name: 'get_media_captions', group: J,
     description: 'List caption/subtitle tracks available on a recorded lecture. Captions are the closest thing Canvas gives you to a lecture transcript.',
     schema: { media_id: z.string().describe('media_id from list_media_objects') },
-    handler: async (a) => ok(await canvas.get(`/media_objects/${a.media_id}/media_tracks`, { include: ['content', 'webvtt_content'] })),
+    handler: async (a) => ok(fenceProse(await canvas.get(`/media_objects/${a.media_id}/media_tracks`, { include: ['content', 'webvtt_content'] }), 'lecture captions')),
   });
   tool({
     name: 'download_media_captions', group: J, local: true,

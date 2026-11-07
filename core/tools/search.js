@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, canvas, ok, fence, html2text, COURSE, LIMIT, API } = ctx;
+  const { tool, canvas, ok, fence, fenceProse, html2text, COURSE, LIMIT, API } = ctx;
 
   const M = 'search';
 
@@ -13,7 +13,7 @@ export default function register(ctx) {
     handler: async (a) => {
       try {
         const r = await canvas.get(`/courses/${a.course_id}/smartsearch`, { q: a.query, filter: a.filter, include: ['status', 'modules'] });
-        return ok(r);
+        return ok(fenceProse(r, 'smart search result'));
       } catch (e) {
         if (e.status === 404 || e.status === 403) return ok({ smart_search_available: false, note: 'Smart Search is not enabled on this Canvas instance. Use search_course_content instead.' });
         throw e;

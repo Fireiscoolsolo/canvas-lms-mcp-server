@@ -57,12 +57,12 @@ export function fakeFetch({ calls = [], override } = {}) {
 }
 
 /** A server on the fake Canvas plus a connected in-memory client. */
-export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log } = {}) {
+export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log, wrapFetch = (f) => f } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-mcp-test-'));
   const built = createCanvasServer({
     env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...(typeof env === 'function' ? env(dir) : env) },
     version: 'test', defaultDownloadDir: path.join(dir, 'downloads'), stateDir: path.join(dir, 'state'),
-    fetchImpl: fakeFetch({ calls, override }), elicitation, ...(log ? { log } : {}),
+    fetchImpl: wrapFetch(fakeFetch({ calls, override })), elicitation, ...(log ? { log } : {}),
   });
   const client = new Client({ name: 'test', version: '0' }, { capabilities: clientCapabilities });
   if (onElicit) {
