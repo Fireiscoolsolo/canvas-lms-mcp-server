@@ -38,7 +38,7 @@
 
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import { hostHeaderValidation, localhostHostValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import express from 'express';
@@ -113,6 +113,34 @@ const humanDuration = (ms) => {
   return `${Math.floor(h / 24)} days`;
 };
 
+// The largest MCP request accepted, the same as the MCP SDK's own limit when it reads a request itself. A long essay
+// for submit_assignment_text is well over the 100 KB Express allows by default.
+const MCP_BODY_LIMIT = '4mb';
+
+/**
+ * The SDK's createMcpExpressApp with one change: /mcp takes requests up to MCP_BODY_LIMIT, and a request that is too
+ * big or isn't JSON gets a JSON-RPC error instead of Express's HTML error page.
+ */
+function createApp({ host, allowedHosts }) {
+  const app = express();
+  if (allowedHosts) app.use(hostHeaderValidation(allowedHosts));
+  else if (['127.0.0.1', 'localhost', '::1'].includes(host)) app.use(localhostHostValidation());
+  // The body is read after the Host check, so a request for the wrong host is refused without reading it.
+  app.use('/mcp', express.json({ limit: MCP_BODY_LIMIT }));
+  app.use(express.json());
+  app.use((err, req, res, next) => {
+    if (!err || !(err.type === 'entity.too.large' || err.type === 'entity.parse.failed')) return next(err);
+    const tooBig = err.type === 'entity.too.large';
+    const message = tooBig
+      ? `This request is bigger than the ${MCP_BODY_LIMIT.toUpperCase().replace('MB', ' MB')} this server accepts. Send less at once, for example a file through submit_assignment_file instead of pasting it.`
+      : 'This request is not valid JSON.';
+    res.status(tooBig ? 413 : 400).json(req.path.startsWith('/mcp')
+      ? { jsonrpc: '2.0', id: null, error: { code: tooBig ? -32600 : -32700, message } }
+      : { error: tooBig ? 'too_large' : 'invalid_json', message });
+  });
+  return app;
+}
+
 function readSupervisorState() {
   try { return JSON.parse(fs.readFileSync(path.join(DIR, 'supervisor-state.json'), 'utf8')); } catch { return null; }
 }
@@ -161,7 +189,7 @@ async function main() {
   // hostname, not 127.0.0.1 — the default DNS-rebinding check would reject it.
   // Allow that hostname explicitly instead of disabling the check.
   const allowedHosts = AUTH_ENABLED ? [new URL(PUBLIC_URL).hostname, 'localhost', '127.0.0.1'] : undefined;
-  const app = createMcpExpressApp({ host: HOST, allowedHosts });
+  const app = createApp({ host: HOST, allowedHosts });
   // The tunnel forwards from a proxy and sets X-Forwarded-For to the real
   // visitor IP; trust it (loopback only by default) so rate limiting below
   // keys on the actual client, not the tunnel's local forwarding address.

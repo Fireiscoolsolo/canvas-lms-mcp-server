@@ -212,6 +212,31 @@ test('a slow tool on one device never holds up another', { timeout: 30000 }, asy
   }
 });
 
+test('a long tool call gets through, and one that is far too long gets a clear answer', { timeout: 30000 }, async () => {
+  const s = await start('index.js', {});
+  const post = (body, type = 'application/json') => fetch(`http://127.0.0.1:${s.port}/mcp`, {
+    method: 'POST', headers: { 'Content-Type': type, Accept: 'application/json, text/event-stream' }, body,
+  });
+  const call = (query) => JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'search_tools', arguments: { query } } });
+  try {
+    assert.equal(s.ready, true, s.output());
+    const long = await post(call('x'.repeat(150 * 1024)));
+    assert.equal(long.status, 200, 'a 150 KB call, such as a long essay, is accepted');
+    assert.match(await long.text(), /"result"/);
+
+    const huge = await post(call('x'.repeat(5 * 1024 * 1024)));
+    assert.equal(huge.status, 413);
+    assert.match(huge.headers.get('content-type') || '', /json/);
+    const body = await huge.json();
+    assert.equal(body.jsonrpc, '2.0');
+    assert.match(body.error.message, /MB/);
+
+    const broken = await post('{"jsonrpc": "2.0", "id": 1,');
+    assert.equal(broken.status, 400);
+    assert.match(broken.headers.get('content-type') || '', /json/, 'broken JSON gets a JSON answer, not a web page');
+  } finally { await s.stop(); }
+});
+
 const HOSTILE = "x'+(document.title='XSS-RAN',event.preventDefault(),(()=>{throw 0})())+'";
 const row = (app) => ({ sessions: [{ client_id: 'c1', app, signed_in: false, registered: '2026-11-01T00:00:00Z' }] });
 
