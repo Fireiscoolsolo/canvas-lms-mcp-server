@@ -341,7 +341,13 @@ async function main() {
   app.post('/mcp', mcpAuthMiddleware, processMcp);
   app.delete('/mcp', mcpAuthMiddleware, processMcp);
   // Public, so the setup app and uptime checkers can see the server is up. It says nothing about your account.
-  app.get('/healthz', (_req, res) => res.json({ ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }));
+  // Anyone can call this, so through the tunnel it only says the server is up. The version and whether sign-in is on
+  // are for doctor and status on this computer: a loopback connection that no proxy forwarded.
+  const fromThisComputer = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded;
+  app.get('/healthz', (req, res) => res.json(fromThisComputer(req)
+    ? { ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }
+    : { ok: true, tools: registry.length }));
 
   app.listen(PORT, HOST, () => {
     log(`ready on http://${HOST}:${PORT}/mcp`);

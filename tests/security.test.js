@@ -237,6 +237,29 @@ test('a long tool call gets through, and one that is far too long gets a clear a
   } finally { await s.stop(); }
 });
 
+test('the public health check says it is up, and only this computer hears the version and sign-in state', { timeout: 30000 }, async () => {
+  const s = await start('index.js', {});
+  const health = async (headers = {}) => (await fetch(`http://127.0.0.1:${s.port}/healthz`, { headers })).json();
+  try {
+    assert.equal(s.ready, true, s.output());
+    assert.deepEqual(Object.keys(await health()).sort(), ['auth_enabled', 'ok', 'tools', 'version'], 'doctor and status on this computer still see everything');
+    for (const through of [{ 'X-Forwarded-For': '203.0.113.5' }, { 'Cf-Connecting-Ip': '203.0.113.5' }, { Forwarded: 'for=203.0.113.5' }]) {
+      const pub = await health(through);
+      assert.deepEqual(Object.keys(pub).sort(), ['ok', 'tools'], JSON.stringify(through));
+      assert.equal(pub.ok, true);
+    }
+  } finally { await s.stop(); }
+});
+
+test('the Docker images are pinned to a version and digest', () => {
+  const pinned = /^\s*#?\s*(FROM|image:)\s+[\w./-]+:[\w.-]+@sha256:[0-9a-f]{64}\s*$/;
+  for (const file of ['Dockerfile', 'docker-compose.yml']) {
+    const lines = fs.readFileSync(path.join(ROOT, file), 'utf8').split(/\r?\n/).filter((l) => /^\s*#?\s*(FROM|image:)\s/.test(l) && !/image:\s+canvas-lms-mcp-remote\s*$/.test(l));
+    assert.ok(lines.length > 0, file);
+    for (const line of lines) assert.match(line, pinned, `${file}: ${line.trim()}`);
+  }
+});
+
 const HOSTILE = "x'+(document.title='XSS-RAN',event.preventDefault(),(()=>{throw 0})())+'";
 const row = (app) => ({ sessions: [{ client_id: 'c1', app, signed_in: false, registered: '2026-11-01T00:00:00Z' }] });
 

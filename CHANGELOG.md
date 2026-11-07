@@ -6,6 +6,8 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 ## Unreleased
 
 ### Security
+- **The public health check says less.** Through your public address, `/healthz` now only says the server is up and how many tools it has. The version and whether sign-in is on are only shown on the computer itself, for `doctor` and `status`.
+- **The Docker images are pinned.** The Dockerfile and the tunnel images in `docker-compose.yml` name an exact version and digest instead of `latest`, so a rebuild uses what was tested.
 - **The tunnel program doesn't see your secrets.** ngrok and cloudflared were started with the server's whole environment, including the Canvas token, password and cluster secret. They now get everything except this server's `CANVAS_` settings, plus the tunnel token cloudflared needs.
 - **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN# Changelog
 

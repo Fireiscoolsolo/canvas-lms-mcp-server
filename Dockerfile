@@ -1,6 +1,8 @@
 # Canvas MCP Remote in a container, for a home server or NAS. See docker-compose.yml and the README's Docker section.
 # Settings come from environment variables (env_file: .env); logins and state persist in the /data volume.
-FROM node:22-alpine
+# Pinned to a version and its digest, so a rebuild uses exactly what was tested. To update, pick a newer node:22
+# alpine tag on Docker Hub and its sha256 digest.
+FROM node:22.23.4-alpine3.24@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
 
 WORKDIR /app
 COPY package.json package-lock.json ./
