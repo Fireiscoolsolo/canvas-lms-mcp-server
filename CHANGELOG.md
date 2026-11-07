@@ -29,7 +29,10 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Lock on the status page really signs you out.** It used to clear the cookie in your own browser only, so a copied cookie kept working for up to 12 hours. Sessions are now random IDs that Lock ends everywhere, and a restart ends them all, so you may need to enter the password again after updating.
 - **Wrong passwords on the status page count.** They now go through the same lockout as the login page, appear in recent sign-ins, and a lockout sends the security alert. With security alerts on, signing in to the status page sends a sign-in alert too.
 
+- **Secret files are private.** On Linux and macOS, `.env`, its backups, `oauth-store.json` and `login-history.json` are now written so only your user can read them. `.env.backup-*` and temp files are now in `.gitignore`.
+
 ### Fixed
+- **An interrupted handoff no longer signs everyone out.** A standby computer saves its copy of the sign-ins whole or not at all, and only if the copy looks right. Before, a crash or a bad answer part way could leave a broken file. The login history is saved the same way.
 - **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
 - **Apps on the same computer can sign in on any port.** An app that came back on a different port than it registered got past the first sign-in step and was then refused at the password, although the standard allows it.
 

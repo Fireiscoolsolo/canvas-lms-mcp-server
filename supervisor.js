@@ -54,6 +54,7 @@ import { redact } from './core/text.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings } from './core/network.js';
 import { startupProblems } from './startup-check.js';
+import { saveStoreCopy } from './oauth-provider.js';
 
 dotenv.config({ quiet: true });
 applyNetworkSettings({ ipFamily: ipFamilyFrom() });
@@ -326,11 +327,10 @@ async function enterStandby() {
 
 async function syncHandoffData({ quiet = false } = {}) {
   const handoff = await callInternal('/internal/handoff');
-  if (handoff.ok && handoff.data && typeof handoff.data === 'object' && !Array.isArray(handoff.data)) {
-    fs.writeFileSync(OAUTH_STORE_PATH, JSON.stringify(handoff.data, null, 2));
+  if (handoff.ok && saveStoreCopy(OAUTH_STORE_PATH, handoff.data)) {
     if (!quiet) log('synced session data from the active instance');
   } else {
-    log(`could not sync session data (${handoff.error || handoff.status || 'malformed response'}) — using local data as-is`);
+    log(`could not sync session data (${handoff.error || handoff.status || 'it was not a complete sign-in store, or could not be saved'}) — using local data as-is`);
   }
 }
 

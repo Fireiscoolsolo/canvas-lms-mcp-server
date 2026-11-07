@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { InvalidClientMetadataError, InvalidGrantError, InvalidTargetError, InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { acceptTotp } from './totp.js';
+import { writePrivate } from './env-file.js';
 
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60; // 1 hour; clients refresh via refresh_token
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -102,6 +103,25 @@ function readStore(storePath) {
   }
 }
 
+const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+/** Whether data looks like this server's sign-in store: apps by ID, and tokens that each name an app. */
+export function isStoreShape(d) {
+  if (!isObject(d) || !isObject(d.clients) || !isObject(d.refreshTokens) || !isObject(d.accessTokens)) return false;
+  if (d.usedRefreshTokens !== undefined && !isObject(d.usedRefreshTokens)) return false;
+  return Object.values(d.clients).every((c) => isObject(c) && typeof c.client_id === 'string')
+    && [...Object.values(d.refreshTokens), ...Object.values(d.accessTokens)].every((t) => isObject(t) && typeof t.clientId === 'string');
+}
+
+/**
+ * Save a copy of the sign-ins that came from the computer that is serving. Saved whole or not at all, and only if it
+ * looks right, so a bad answer or a crash part way can never sign every app out. Returns whether it was saved.
+ */
+export function saveStoreCopy(file, data) {
+  if (!isStoreShape(data)) return false;
+  try { writePrivate(file, JSON.stringify(data, null, 2)); return true; } catch { return false; }
+}
+
 function randomToken() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -165,11 +185,7 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
   const authCodes = new Map();
   const failures = new Map(); // ip -> { times: [ms], lockedUntil: ms }
 
-  const persist = (store) => {
-    const tmp = `${storePath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
-    fs.renameSync(tmp, storePath);
-  };
+  const persist = (store) => writePrivate(storePath, JSON.stringify(store, null, 2));
 
   /** Drop codes that expired and addresses with no recent wrong tries, so a flood of attempts can't fill memory. */
   function sweep() {
@@ -203,7 +219,7 @@ export function createOAuthProvider({ password, storePath, historyPath = null, t
     let list = [];
     try { list = JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch { /* first entry */ }
     list.push({ at: new Date(now()).toISOString(), ...entry });
-    try { fs.writeFileSync(historyPath, JSON.stringify(list.slice(-HISTORY_MAX), null, 2)); } catch { /* read-only folder */ }
+    try { writePrivate(historyPath, JSON.stringify(list.slice(-HISTORY_MAX), null, 2)); } catch { /* read-only folder, or the write couldn't finish: the old history stays */ }
   }
 
   function lockedFor(ip) {

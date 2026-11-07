@@ -9,3 +9,5 @@ state.json
 *.log
 *.log.*
 *.flag
+.env.backup-*
+*.tmp
