@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { connect, BASE } from './fake-canvas.js';
+import { connect, sampleArgs, BASE } from './fake-canvas.js';
 
 const CANVAS_HOST = new URL(BASE).host;
 const text = (r) => (r.content || []).map((c) => c.text || '').join('\n');
@@ -201,6 +201,49 @@ test('a request cannot leave the API or reach endpoints that hand out sign-ins',
     } finally {
       await close();
     }
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// An ID can only be an ID. Built from the tool list, so a new tool is covered without anyone remembering to add it.
+// ---------------------------------------------------------------------------------------------------------------
+
+const isIdParam = (name, prop) => (name === 'id' || name.endsWith('_id')) && prop.type === 'string';
+
+test('no tool lets an ID point the request somewhere else', { timeout: 120000 }, async () => {
+  const calls = [];
+  const { client, dir, close } = await connect({ calls });
+  try {
+    const { tools } = await client.listTools();
+    let checked = 0;
+    for (const t of tools) {
+      for (const [name, prop] of Object.entries(t.inputSchema.properties || {})) {
+        if (!isIdParam(name, prop)) continue;
+        for (const value of ['1/discussion_topics/5/entries?x=', '../conversations/123?x=', '1?x=', '1#x', '1%2fcanary', '1\\canary', '..', '.', '1\ncanary']) {
+          calls.length = 0;
+          const r = await client.callTool({ name: t.name, arguments: { ...sampleArgs(t.inputSchema, dir), [name]: value, confirm: true } });
+          assert.equal(r.isError, true, `${t.name}.${name} should refuse ${JSON.stringify(value)}`);
+          assert.deepEqual(calls, [], `${t.name}.${name} must send nothing for ${JSON.stringify(value)}`);
+          checked++;
+        }
+      }
+    }
+    assert.ok(checked > 1000, `expected a broad check, did ${checked}`);
+  } finally {
+    await close();
+  }
+});
+
+test('real Canvas IDs still work', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    for (const id of ['123', 'self', 'sis_course_id:BIO-101', 'sis_course_id:BIO 101', '1234~5678', 'uuid:abc-123', 'hex:sis_course_id:414243', '9007199254740993']) {
+      const r = await client.callTool({ name: 'get_course', arguments: { course_id: id } });
+      assert.ok(!r.isError, `${id}: ${text(r)}`);
+    }
+  } finally {
+    await close();
   }
 });
 

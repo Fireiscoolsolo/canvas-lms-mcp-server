@@ -25,6 +25,11 @@ export const CORE_TOOLS = new Set([
 // Always available, whatever CANVAS_TOOLS says, so the assistant can still find tools and diagnose problems.
 const ALWAYS = new Set(['search_tools', 'test_connection', 'get_server_config']);
 
+// IDs go straight into request paths, so one of these characters would point a harmless tool at a different endpoint.
+// Canvas's own forms (self, sis_course_id:BIO-101, 1234~5678, hex:...) don't need them.
+const UNSAFE_ID = /[/\\?#%\u0000-\u001f\u007f]|^\.{1,2}$/;
+const unsafeId = (args) => Object.keys(args).find((k) => (k === 'id' || k.endsWith('_id')) && typeof args[k] === 'string' && UNSAFE_ID.test(args[k]));
+
 const DESTRUCTIVE = /^(delete|remove|leave|cancel)_/;
 const IDEMPOTENT = /^(mark_|set_|star_|unstar_|subscribe_|unsubscribe_|update_|add_favorite_|remove_favorite_|reset_|dismiss_|delete_|remove_)/;
 
@@ -157,6 +162,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       annotations: { ...annotationsFor({ name, write, confirm, offline, local }), ...doc.annotations },
     }, async (args = {}, extra = {}) => {
       try {
+        const bad = unsafeId(args);
+        if (bad) return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`);
         if (!offline) {
           const problem = setupProblem();
           if (problem) return fail(problem);
