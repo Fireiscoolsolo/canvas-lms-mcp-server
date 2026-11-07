@@ -70,6 +70,56 @@ export function explainStatus(status, url, body, { base = '' } = {}) {
   return `Canvas returned an error. ${where} ${said || (typeof body === 'string' ? body.slice(0, 300) : '')}`.trim();
 }
 
+// ---------------------------------------------------------------------------
+// Where requests may go. Every request with the token passes through here, so no tool can send it anywhere else.
+// Text teachers and classmates wrote reaches the model, so a path is treated as chosen by someone hostile.
+// ---------------------------------------------------------------------------
+
+const refuse = (why) => new CanvasError(`Refused: ${why} Nothing was sent.`, { code: 'BLOCKED' });
+const notCanvas = (host, canvasHost) => refuse(`${host || 'that address'} is not your Canvas (${canvasHost}), and your token only ever goes to Canvas. If your school uses another address for Canvas, put that one in CANVAS_BASE_URL.`);
+
+/** Turn a path or a full address into the URL to call. The checks run first because the URL parser tidies `..` and backslashes away. */
+export function canvasUrl(p, api) {
+  const raw = String(p ?? '');
+  const root = new URL(api);
+  const absolute = /^https?:\/\//i.test(raw);
+  const pathPart = (absolute ? raw.replace(/^https?:\/\/[^/?#]*/i, '') : raw).split(/[?#]/)[0];
+  if (/[\u0000-\u001f\u007f]/.test(raw) || pathPart.includes('\\')) throw refuse('that address has characters no Canvas address uses.');
+  if (pathPart.split('/').some((s) => /^(\.|%2e){1,2}$/i.test(s))) throw refuse('that address tries to climb out of the Canvas API.');
+  let url;
+  try { url = new URL(absolute ? raw : `${api}${raw.startsWith('/') ? '' : '/'}${raw}`); } catch { throw refuse('that is not a valid address.'); }
+  if (url.origin !== root.origin) throw notCanvas(url.hostname, root.hostname);
+  if (url.pathname !== root.pathname && !url.pathname.startsWith(`${root.pathname}/`)) throw refuse('that address is outside the Canvas API.');
+  if (/%(?:2f|5c|[01][0-9a-f]|7f)/i.test(url.pathname)) throw refuse('that address hides a separator or control character.');
+  return url;
+}
+
+/** A path as Canvas would read it, however it was written: decoded until nothing changes, lower case, no doubled slashes. */
+function plainPath(pathname) {
+  let p = pathname;
+  for (let i = 0; i < 4; i++) {
+    const next = p.replace(/%([0-9a-f]{2})/gi, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === p) break;
+    p = next;
+  }
+  return p.toLowerCase().replace(/\/{2,}/g, '/');
+}
+
+const QUIZ_TAKING = /\/quiz_submissions|\/quizzes\/[^/]+\/submissions/;
+const SIGN_INS = /\/login\/session_token|\/users\/[^/]+\/tokens(\/|$)/;
+const CONTACT_METHODS = /\/communication_channels(\/[^/]+)?$/;
+
+/**
+ * Endpoints no tool may reach, checked on the final address. Taking a quiz is left out on purpose. The others would
+ * let someone act as you without this server: a sign-in link, a new token, or a new email address on the account.
+ */
+export function refuseBlocked(method, url) {
+  const p = plainPath(new URL(url).pathname);
+  if (method !== 'GET' && QUIZ_TAKING.test(p)) throw refuse('this path writes to a quiz submission. Quiz-taking endpoints are intentionally not available through this server.');
+  if (SIGN_INS.test(p)) throw refuse('this Canvas endpoint hands out sign-ins or tokens, so it is not available through this server.');
+  if ((method === 'POST' || method === 'DELETE') && CONTACT_METHODS.test(p)) throw refuse('adding or removing a contact method on your account is not available through this server.');
+}
+
 export function parseNextLink(header) {
   if (!header) return null;
   for (const part of header.split(',')) {
@@ -160,8 +210,22 @@ export class CanvasClient {
     return run;
   }
 
+  /** True for an address on this Canvas. Only those get the token. */
+  isCanvasUrl(u) {
+    try { return new URL(u).origin === new URL(this.api).origin; } catch { return false; }
+  }
+
+  assertCanvasUrl(u) {
+    if (!this.isCanvasUrl(u)) throw notCanvas(hostOf(u), hostOf(this.api));
+  }
+
+  /** Throws if this request would be refused, without sending anything. */
+  check(method, p, params) {
+    refuseBlocked(method, this.buildUrl(p, params));
+  }
+
   buildUrl(p, params) {
-    const url = new URL(/^https?:\/\//i.test(p) ? p : `${this.api}${p.startsWith('/') ? '' : '/'}${p}`);
+    const url = canvasUrl(p, this.api);
     for (const [k, v] of Object.entries(params || {})) {
       if (v === undefined || v === null || v === '') continue;
       if (Array.isArray(v)) {
@@ -181,6 +245,7 @@ export class CanvasClient {
   /** `repeatable` marks a write where a second copy does no harm, like asking for an upload slot. */
   async raw(method, p, { params, body, headers, retries = 3, expectJson = true, repeatable = false } = {}) {
     const url = this.buildUrl(p, params);
+    refuseBlocked(method, url);
     const idempotent = method === 'GET' || repeatable;
     return this.enqueue(async () => {
       let attempt = 0;

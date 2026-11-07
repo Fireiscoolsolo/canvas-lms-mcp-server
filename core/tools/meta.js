@@ -20,12 +20,10 @@ export default function register(ctx) {
     },
     handler: async (a) => {
       const m = a.method.toUpperCase();
+      canvas.check(m, a.path, a.params);
       if (m !== 'GET') {
         if (!ALLOW_WRITES) return fail('Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
         if (a.confirm !== true) return ok({ method: m, path: a.path, params: a.params, body: a.body }, 'DRY RUN. Nothing was sent. Re-call with confirm=true to execute this write.');
-        if (/\/quiz_submissions|\/quizzes\/\d+\/submissions/.test(a.path) && (m === 'POST' || m === 'PUT')) {
-          return fail('Refused. This path writes to a quiz submission. Quiz-taking endpoints are intentionally not available through this server.');
-        }
       }
       if (m === 'GET') {
         const data = a.paginate ? await canvas.paginate(a.path, a.params, { max: a.max_items || 200, ttl: 0 }) : await canvas.get(a.path, a.params, { ttl: 0 });

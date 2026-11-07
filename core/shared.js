@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CanvasError, fetchWithRetry, hostOf } from './canvas-client.js';
+import { CanvasError, fetchWithRetry, hostOf, refuseBlocked } from './canvas-client.js';
 
 const TRANSFER_TIMEOUT_MS = 10 * 60000;
 
@@ -70,8 +70,10 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
     let confirmed = null;
     let confirmError = null;
     try { confirmed = await up.json(); } catch { /* some backends 3xx to a confirm URL */ }
-    if (!confirmed?.id && up.url) { try { confirmed = (await canvas.raw('GET', up.url)).data; } catch (e) { confirmError = e; } }
-    if (!confirmed?.id && confirmError) throw failedAt(3, 'confirm', hostOf(up.url), confirmError);
+    // Canvas says where to confirm. canvas.raw() refuses anything off Canvas, so the token can't follow storage elsewhere.
+    const confirmUrl = confirmed?.location || up.headers.get('location') || up.url;
+    if (!confirmed?.id && confirmUrl) { try { confirmed = (await canvas.raw('GET', confirmUrl)).data; } catch (e) { confirmError = e; } }
+    if (!confirmed?.id && confirmError) throw failedAt(3, 'confirm', hostOf(confirmUrl), confirmError);
     if (!confirmed?.id) throw new CanvasError('Upload completed but Canvas did not confirm a file ID.');
     return confirmed;
   }
@@ -94,9 +96,15 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
     return canvas.paginate('/courses', { enrollment_state: 'active', include: ['term'] }, { max, ttl: 300000 });
   }
 
-  /** Fetch a Canvas file URL with the token, with a timeout. Throws a readable error on failure. */
+  /**
+   * Fetch a file address Canvas gave us, with a timeout. Throws a readable error on failure. Only addresses on Canvas
+   * get the token: files stored elsewhere carry their own signature, and that host has no business seeing the token.
+   */
   async function fetchFile(url) {
-    const res = await fetchWithRetry(fetchImpl, url, () => ({ headers: { Authorization: `Bearer ${cfg.token}` } }), { base: cfg.base, timeoutMs: TRANSFER_TIMEOUT_MS });
+    const onCanvas = canvas.isCanvasUrl(url);
+    if (onCanvas) refuseBlocked('GET', url);
+    const headers = onCanvas ? { Authorization: `Bearer ${cfg.token}` } : {};
+    const res = await fetchWithRetry(fetchImpl, url, () => ({ headers }), { base: cfg.base, timeoutMs: TRANSFER_TIMEOUT_MS });
     if (!res.ok) throw new CanvasError(`Download failed (HTTP ${res.status}). The file may be locked, deleted, or no longer shared with you.`);
     return res;
   }

@@ -88,6 +88,7 @@ export default function register(ctx) {
     description: 'Download a file attached to one of your submissions to local disk.',
     schema: { url: z.string().describe('Attachment URL from get_my_submission'), filename: z.string().optional() },
     handler: async (a) => {
+      canvas.assertCanvasUrl(a.url);
       const saved = await saveDownload({ url: a.url, dir: DOWNLOAD_DIR, name: a.filename || (new URL(a.url).pathname.split('/').pop() || 'download.bin') });
       return ok({ saved_to: saved.saved_to, bytes: saved.bytes }, null, { links: [saved.link] });
     },

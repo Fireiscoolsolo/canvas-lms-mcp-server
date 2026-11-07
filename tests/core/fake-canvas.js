@@ -41,7 +41,7 @@ export function fakeFetch({ calls = [], override } = {}) {
     const u = new URL(url);
     const method = (opts.method || 'GET').toUpperCase();
     const p = u.pathname.replace(/^\/api\/v1/, '');
-    calls.push({ method, path: p, query: u.search, body: opts.body ? (typeof opts.body === 'string' ? JSON.parse(opts.body) : '[form]') : undefined });
+    calls.push({ method, path: p, query: u.search, body: opts.body ? (typeof opts.body === 'string' ? JSON.parse(opts.body) : '[form]') : undefined, url: u.href, auth: opts.headers?.Authorization });
     const custom = override?.(method, p, u);
     if (custom?.error) throw custom.error;
     if (custom) return new Response(typeof custom.body === 'string' ? custom.body : JSON.stringify(custom.body), { status: custom.status || 200, headers: { 'content-type': 'application/json', ...(custom.headers || {}) } });

@@ -147,7 +147,7 @@ test('a missing file names the computer the server runs on', async () => {
 
 test('a file download survives a dropped connection', async () => {
   let n = 0;
-  const { fetchFile } = createShared({ canvas: {}, cfg: { token: 't', base: '' }, dates: {}, fetchImpl: async () => { if (++n < 2) throw new TypeError('fetch failed'); return new Response('data'); } });
+  const { fetchFile } = createShared({ canvas: client(async () => new Response('{}')), cfg: { token: 't', base: '' }, dates: {}, fetchImpl: async () => { if (++n < 2) throw new TypeError('fetch failed'); return new Response('data'); } });
   assert.equal(await (await fetchFile('https://x.example/f')).text(), 'data');
 });
 
