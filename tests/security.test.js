@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -144,6 +145,42 @@ test('guessing the cluster secret gets locked out, and the real computers are no
     assert.equal(await guess(GOOD.CANVAS_MCP_CLUSTER_SECRET, '10.9.0.1'), 200, 'another address is not affected');
   } finally {
     await s.stop();
+  }
+});
+
+test('over real HTTP, a preview token survives between requests and the token stays on Canvas', { timeout: 30000 }, async () => {
+  const seen = [];
+  const listen = (handler) => new Promise((r) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => r(s)); });
+  const canvas = await listen((req, res) => { seen.push(`canvas ${req.method} ${req.url.split('?')[0]}`); res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"id":"1"}'); });
+  const attacker = await listen((req, res) => { seen.push(`attacker ${req.headers.authorization || 'no token'}`); res.end('{}'); });
+  const s = await start('index.js', { CANVAS_BASE_URL: `http://127.0.0.1:${canvas.address().port}` });
+  let id = 0;
+  const call = async (name, args) => {
+    const res = await fetch(`http://127.0.0.1:${s.port}/mcp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } }),
+    });
+    const body = await res.text();
+    return JSON.parse(/data: (.*)/.exec(body)?.[1] || body).result;
+  };
+  try {
+    assert.equal(s.ready, true, s.output());
+    const args = { course_id: '1', topic_id: '2', entry_id: '3', rating: 1 };
+    const preview = await call('rate_entry', { ...args, confirm: true });
+    const token = /confirm_token="([^"]+)"/.exec(preview.content[0].text)?.[1];
+    assert.ok(token, preview.content[0].text);
+    assert.equal(seen.filter((x) => x.includes('POST')).length, 0, 'the preview sends nothing');
+    await call('rate_entry', { ...args, confirm: true, confirm_token: token });
+    assert.equal(seen.filter((x) => x.includes('POST')).length, 1, 'the token works on a later request');
+    await call('rate_entry', { ...args, confirm: true, confirm_token: token });
+    assert.equal(seen.filter((x) => x.includes('POST')).length, 1, 'and only once');
+    const leak = await call('raw_canvas_request', { method: 'GET', path: `http://127.0.0.1:${attacker.address().port}/x` });
+    assert.equal(leak.isError, true);
+    assert.equal(seen.filter((x) => x.startsWith('attacker')).length, 0, 'nothing reaches another host');
+  } finally {
+    await s.stop();
+    canvas.close();
+    attacker.close();
   }
 });
 
