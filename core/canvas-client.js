@@ -40,11 +40,21 @@ export class CanvasError extends Error {
 }
 
 /** Normalize the base URL. Accepts with or without https://, a trailing slash and /api/v1. */
+/** A Canvas on this computer, which is the only place an unencrypted address is allowed (for development). */
+const onThisComputer = (host) => /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/i.test(host) || /\.localhost$/i.test(host);
+
+/**
+ * The school address as the server uses it: https://, no trailing slash, no /api/v1. An http:// address is used with
+ * https:// instead, so the token never travels unencrypted, unless Canvas runs on this computer.
+ */
 export function normalizeBase(raw) {
   let b = String(raw || '').trim().replace(/\/+$/, '');
   if (!b) return '';
   if (!/^https?:\/\//i.test(b)) b = 'https://' + b;
-  return b.replace(/\/api\/v1$/i, '');
+  b = b.replace(/\/api\/v1$/i, '');
+  const http = /^http:\/\/([^/]+)/i.exec(b);
+  if (http && !onThisComputer(http[1].replace(/:\d+$/, ''))) b = `https://${b.slice(http[0].length - http[1].length)}`;
+  return b;
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -70,9 +70,11 @@ function readLimits(env) {
 export function readConfig(env = process.env, { defaultDownloadDir, readStore } = {}) {
   const base = normalizeBase(env.CANVAS_BASE_URL);
   const downloads = env.CANVAS_DOWNLOAD_DIR || defaultDownloadDir;
+  const upgraded = /^http:\/\//i.test(String(env.CANVAS_BASE_URL || '').trim()) && base.startsWith('https://');
   return {
     ...resolveToken(env, { readStore }),
     base,
+    baseNote: upgraded ? `CANVAS_BASE_URL starts with http://, so ${base} (https://) is used instead, to keep the token encrypted. Change it in your settings to stop this note.` : '',
     api: base ? `${base}/api/v1` : '',
     ...readLimits(env),
     tools: list(env.CANVAS_TOOLS),

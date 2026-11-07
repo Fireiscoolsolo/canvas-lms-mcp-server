@@ -117,6 +117,7 @@ export function createCanvasServer({
   /** Log the setup and start background checks. Never throws, so the server always starts. */
   function start() {
     if (cfg.settingsProblem) safeLog(`WARNING: ${cfg.settingsProblem}`);
+    if (cfg.baseNote) safeLog(`note: ${cfg.baseNote}`);
     if (reg.unknownNames().length) safeLog(`WARNING: CANVAS_TOOLS or CANVAS_DISABLE_TOOLS names something that doesn't exist, so it did nothing: ${reg.unknownNames().join(', ')}`);
     if (cfg.tokenError) safeLog(`WARNING: ${cfg.tokenError}`);
     else if (!cfg.token) safeLog(`WARNING: CANVAS_API_TOKEN is not set. Every Canvas tool will return a setup error. ${missingTokenHelp}`.trim());

@@ -34,7 +34,6 @@ It needs Node.js 18 or newer (22 or newer to read PDFs). Every change is tested 
 - **Anyone or anything using the server's computer account.** Malware, or another person signed in as you, can read `.env` and `oauth-store.json`.
 - **Canvas, your school and Instructure's file storage.** They already hold your data.
 - **A flood of traffic.** The rate limits slow guessing down, but the server isn't built to stay up under a deliberate flood.
-- **A school address that starts with `http://`.** The token would travel unencrypted. Use the `https://` address.
 
 ## Keep these private
 | File | Contains |

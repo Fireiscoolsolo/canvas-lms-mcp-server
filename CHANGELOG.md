@@ -6,6 +6,7 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 ## Unreleased
 
 ### Security
+- **The token is never sent unencrypted.** A school address written with `http://` is now used with `https://`, and the log says so. Only a Canvas running on the same computer keeps `http://`.
 - **Your Canvas token only goes to Canvas.** Every request now passes one check, so no tool can send the token to another address, whether that address came from the model, a next-page link, a file record or an upload. Files stored on another host are fetched without it. `download_submission_attachment` only takes addresses on your Canvas. If your school uses a second address for Canvas, use that one in `CANVAS_BASE_URL`.
 - **The quiz block can't be spelled around.** It now runs on the final address, for every tool and every write method.
 - **Requests stay inside the Canvas API.** A path can't climb out of `/api/v1`, and endpoints that hand out sign-in links or tokens, or add a contact method to your account, are refused.
