@@ -1,5 +1,41 @@
 # Security
 
+## Supported versions
+Security fixes go into the newest release only, so keep every computer in your group up to date, then run `canvas-lms-mcp-remote doctor` on each one. On Windows, the [Canvas MCP Installer Assistant](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/app/) updates it for you.
+
+| Version | Gets security fixes |
+|---|---|
+| The newest release | Yes |
+| Anything older | No. Update first |
+
+It needs Node.js 18 or newer (22 or newer to read PDFs). Every change is tested on Node 18, 20, 22 and 24, on Windows and Linux.
+
+## Threat model
+
+### What it protects
+- **Your Canvas token.** It can do anything you can do in Canvas, so keeping it safe matters most.
+- **Your server password and sign-ins**: who can use your Canvas through this server.
+- **Your Canvas account**, from changes you didn't ask for: submissions, posts, messages and deletes.
+- **Files on the server's computer**: where downloads go, and what can be uploaded.
+
+### Who it defends against
+| Who | What they could try | What stops them |
+|---|---|---|
+| **Anyone who can write in your Canvas**: teachers, classmates and other users | Hide instructions in a post, page, message, file or name, hoping your AI follows them | Limits that hold whatever the AI is told. The token only goes to your Canvas. Quiz-taking, sign-in and token endpoints are refused. An ID can't change which endpoint a tool calls. Downloads stay in your download folder. Private files can't be uploaded. Changes need a preview and a one-time token. Their text is also fenced and labelled as untrusted, which helps the AI but is advice, not a wall |
+| **Someone on the internet who knows your address** | Guess your password, trick you into typing it for a look-alike app, or try the endpoints the computers use to coordinate | The server won't start with an empty or example password. Five wrong passwords lock an address out for 15 minutes, on the login and status pages alike. Two-factor codes are optional, and each works once. The login page names where your sign-in goes and warns about look-alike apps. Wrong guesses at the cluster secret are locked out too |
+| **An app you connected, or someone who copied its token** | Keep using your Canvas through the server | Access tokens last an hour. A copied refresh token used after the real app has moved on signs that sign-in out. Tokens issued for another server are refused. You can sign any app out on the status page, and `rotate-password` signs every app out |
+| **Mistakes** | A typo that leaves writes on when you meant them off, or a crash part way through saving the sign-ins | A setting the server can't read stops it from starting, and says what to fix. Sign-ins and secrets are saved whole or not at all |
+
+### What it can't protect against
+- **Your AI app and the company that runs it.** They see everything the tools return, and can call any tool that is switched on. A confirmation token shows the request didn't change after the preview, not that you said yes. Keep your app's "ask before running" setting on for tools that send, submit, upload or delete. To switch tools off, use `CANVAS_DISABLE_TOOLS`, or `CANVAS_ALLOW_WRITES=false` for read-only.
+- **Your tunnel provider.** ngrok and Cloudflare end the HTTPS connection on their side before they forward it, so they could see requests and replies. Use one you trust.
+- **Anyone with your password**, and your two-factor code if it's on.
+- **The other computers in your group.** They share the cluster secret, so each one can read the sign-ins and sign apps out. Only add computers you control.
+- **Anyone or anything using the server's computer account.** Malware, or another person signed in as you, can read `.env` and `oauth-store.json`.
+- **Canvas, your school and Instructure's file storage.** They already hold your data.
+- **A flood of traffic.** The rate limits slow guessing down, but the server isn't built to stay up under a deliberate flood.
+- **A school address that starts with `http://`.** The token would travel unencrypted. Use the `https://` address.
+
 ## Keep these private
 | File | Contains |
 |---|---|
