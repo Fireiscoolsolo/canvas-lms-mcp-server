@@ -220,11 +220,17 @@ function startServer() {
   });
 }
 
+/**
+ * The environment for the tunnel program: everything it might need (PATH, proxies, its own NGROK_ or TUNNEL_ settings)
+ * but none of this server's CANVAS_ settings, which hold the Canvas token, the password and the cluster secret.
+ */
+const tunnelEnv = (extra = {}) => ({ ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CANVAS_/i.test(k))), ...extra });
+
 function startTunnel() {
   if (TUNNEL === 'none') return;
   const [cmd, args, env, label] = TUNNEL === 'cloudflared'
-    ? [CLOUDFLARED, ['tunnel', '--no-autoupdate', '--metrics', `127.0.0.1:${METRICS_PORT}`, 'run'], { ...process.env, TUNNEL_TOKEN: CLOUDFLARED_TOKEN }, 'cloudflared']
-    : [NGROK, ['http', `--url=${PUBLIC_URL}`, String(PORT), '--log=stdout'], process.env, 'ngrok'];
+    ? [CLOUDFLARED, ['tunnel', '--no-autoupdate', '--metrics', `127.0.0.1:${METRICS_PORT}`, 'run'], tunnelEnv({ TUNNEL_TOKEN: CLOUDFLARED_TOKEN }), 'cloudflared']
+    : [NGROK, ['http', `--url=${PUBLIC_URL}`, String(PORT), '--log=stdout'], tunnelEnv(), 'ngrok'];
   const child = spawn(cmd, args, { cwd: DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });
   tunnelChild = child;
   pipeLines(child.stdout);

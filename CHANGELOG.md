@@ -6,6 +6,7 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 ## Unreleased
 
 ### Security
+- **The tunnel program doesn't see your secrets.** ngrok and cloudflared were started with the server's whole environment, including the Canvas token, password and cluster secret. They now get everything except this server's `CANVAS_` settings, plus the tunnel token cloudflared needs.
 - **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN# Changelog
 
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition

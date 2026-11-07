@@ -45,9 +45,9 @@ async function publicAddress(prefer) {
   return { url: `http://127.0.0.1:${server.address().port}`, backends, goOnline: () => { online = true; }, close: () => server.close() };
 }
 
-async function supervisor(label, pub) {
+async function supervisor(label, pub, { stub = STUB } = {}) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), `canvas-failover-${label}-`));
-  fs.writeFileSync(path.join(cwd, 'tunnel.js'), STUB);
+  fs.writeFileSync(path.join(cwd, 'tunnel.js'), stub);
   const port = await freePort();
   pub.backends.push(port);
   const child = spawn(process.execPath, [path.join(ROOT, 'supervisor.js')], {
@@ -70,8 +70,26 @@ async function supervisor(label, pub) {
     if (child.exitCode === null) child.kill('SIGKILL');
     fs.rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
   };
-  return { label, child, state, log: () => log, stop };
+  return { label, cwd, child, state, log: () => log, stop };
 }
+
+test('the tunnel program gets its own token and none of the server\'s secrets', { timeout: 60000 }, async () => {
+  // Writes down the names of the settings it was started with (never their values), then acts like cloudflared.
+  const stub = `require('fs').writeFileSync('tunnel-env.json', JSON.stringify(Object.keys(process.env)));${STUB}`;
+  const pub = await publicAddress();
+  const one = await supervisor('env', pub, { stub });
+  try {
+    const until = Date.now() + 30000;
+    while (Date.now() < until && !fs.existsSync(path.join(one.cwd, 'tunnel-env.json'))) await sleep(300);
+    const names = JSON.parse(fs.readFileSync(path.join(one.cwd, 'tunnel-env.json'), 'utf8'));
+    assert.ok(names.includes('TUNNEL_TOKEN'), 'cloudflared gets its tunnel token');
+    assert.deepEqual(names.filter((n) => /^CANVAS_/i.test(n)), [], 'and none of the CANVAS_ settings: the token, the password, the cluster secret');
+    assert.ok(names.some((n) => /^path$/i.test(n)), 'the rest of the environment is still there');
+  } finally {
+    await one.stop();
+    pub.close();
+  }
+});
 
 async function settles(prefer) {
   const pub = await publicAddress(prefer);
