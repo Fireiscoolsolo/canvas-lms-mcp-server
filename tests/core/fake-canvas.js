@@ -59,7 +59,7 @@ export function fakeFetch({ calls = [], override } = {}) {
 export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-mcp-test-'));
   const built = createCanvasServer({
-    env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...env },
+    env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...(typeof env === 'function' ? env(dir) : env) },
     version: 'test', defaultDownloadDir: path.join(dir, 'downloads'), stateDir: path.join(dir, 'state'),
     fetchImpl: fakeFetch({ calls, override }), elicitation, ...(log ? { log } : {}),
   });

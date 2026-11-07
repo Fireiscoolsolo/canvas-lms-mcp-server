@@ -14,6 +14,7 @@
 //   CANVAS_MAX_RESPONSE_CHARS  Longest answer a tool returns before it is cut, in characters. Default: 100000
 //   CANVAS_IP_FAMILY       4 or 6 uses only that kind of address. Default: both
 import fs from 'node:fs';
+import path from 'node:path';
 import { normalizeBase } from './canvas-client.js';
 import { readStoredToken, storeName } from './token-store.js';
 
@@ -68,6 +69,7 @@ function readLimits(env) {
 
 export function readConfig(env = process.env, { defaultDownloadDir, readStore } = {}) {
   const base = normalizeBase(env.CANVAS_BASE_URL);
+  const downloads = env.CANVAS_DOWNLOAD_DIR || defaultDownloadDir;
   return {
     ...resolveToken(env, { readStore }),
     base,
@@ -77,7 +79,7 @@ export function readConfig(env = process.env, { defaultDownloadDir, readStore } 
     disabled: list(env.CANVAS_DISABLE_TOOLS) || new Set(),
     cacheTtl: Number(env.CANVAS_CACHE_TTL || 60) * 1000,
     tz: env.CANVAS_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    downloadDir: env.CANVAS_DOWNLOAD_DIR || defaultDownloadDir,
+    downloadDir: downloads ? path.resolve(downloads) : downloads,
     maxChars: Math.max(5000, Number(env.CANVAS_MAX_RESPONSE_CHARS) || 100000),
     ipFamily: ipFamilyFrom(env),
   };

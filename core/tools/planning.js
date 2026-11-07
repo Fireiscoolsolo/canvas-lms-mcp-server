@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { folderLink, tool, canvas, ok, omitEmpty, fence, html2text, localize, relativeDue, iso, daysFromNow, sleep, COURSE, TOKEN, TZ, DOWNLOAD_DIR, activeCourses, state, BASE, saveDownload, fail, friendly } = ctx;
+  const { folderLink, tool, canvas, ok, omitEmpty, fence, html2text, localize, relativeDue, iso, daysFromNow, sleep, COURSE, TOKEN, TZ, DOWNLOAD_DIR, activeCourses, state, BASE, saveDownload, downloadFolder, fail, friendly } = ctx;
 
   const N = 'planning';
 
@@ -250,7 +250,7 @@ export default function register(ctx) {
     handler: async (a, { progress }) => {
       const files = await canvas.paginate(`/courses/${a.course_id}/files`, { content_types: a.content_types }, { max: a.max_files || 50 });
       const course = await canvas.get(`/courses/${a.course_id}`);
-      const dir = a.dest_dir || path.join(DOWNLOAD_DIR, String(course.course_code || course.id).replace(/[^\w.-]/g, '_'));
+      const dir = downloadFolder(a.dest_dir || path.join(DOWNLOAD_DIR, String(course.course_code || course.id).replace(/[^\w.-]/g, '_')));
       const saved = [], failed = [];
       for (const [i, f] of files.entries()) {
         progress(i, files.length, `Downloading ${f.display_name || f.filename}`);
@@ -269,6 +269,7 @@ export default function register(ctx) {
     description: 'Trigger a full course export, poll until Canvas finishes packaging it, then download the .imscc archive locally. Use before a term ends and access disappears. Can take several minutes.',
     schema: { course_id: COURSE, dest_dir: z.string().optional(), timeout_seconds: z.number().int().positive().optional().describe('Default 300') },
     handler: async (a, { progress }) => {
+      const dir = downloadFolder(a.dest_dir);
       const started = await canvas.post(`/courses/${a.course_id}/content_exports`, { export_type: 'common_cartridge', skip_notifications: true });
       const timeout = (a.timeout_seconds || 300) * 1000;
       const deadline = Date.now() + timeout;
@@ -283,7 +284,7 @@ export default function register(ctx) {
       const url = exp.attachment?.url;
       if (!url) return ok({ export_id: started.id, state: exp.workflow_state, note: 'Export finished but no attachment URL was returned.' });
       progress(96, 100, 'Downloading the archive');
-      const saved = await saveDownload({ url, dir: a.dest_dir || DOWNLOAD_DIR, name: exp.attachment.filename || `course-${a.course_id}.imscc`, contentType: 'application/zip' });
+      const saved = await saveDownload({ url, dir, name: exp.attachment.filename || `course-${a.course_id}.imscc`, contentType: 'application/zip' });
       progress(100, 100, 'Done');
       return ok({ saved_to: saved.saved_to, bytes: saved.bytes, export_id: started.id }, null, { links: [saved.link] });
     },

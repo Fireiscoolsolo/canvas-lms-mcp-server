@@ -29,6 +29,51 @@ export function safeFileName(name, fallback = 'download') {
   return cleaned && !reserved ? cleaned : fallback;
 }
 
+/** True when `p` is `folder` or somewhere inside it. */
+const isInside = (folder, p) => {
+  const rel = path.relative(folder, p);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+};
+
+/** Where a path really is after following links, even when its last parts don't exist yet. */
+function realPath(p) {
+  for (let known = p; ;) {
+    try { return path.join(fs.realpathSync(known), path.relative(known, p)); } catch (e) {
+      const up = path.dirname(known);
+      if (e.code !== 'ENOENT' || up === known) return p;
+      known = up;
+    }
+  }
+}
+
+/** Save without ever replacing another file: a different file gets " (1)" added, and the same bytes aren't saved twice. */
+function writeNew(folder, name, data) {
+  const { name: stem, ext } = path.parse(name);
+  for (let n = 0; n < 1000; n++) {
+    const dest = path.join(folder, n ? `${stem} (${n})${ext}` : name);
+    try {
+      fs.writeFileSync(dest, data, { flag: 'wx' });
+      return dest;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      if (fs.statSync(dest).size === data.length && fs.readFileSync(dest).equals(data)) return dest;
+    }
+  }
+  throw new CanvasError(`There are already 1,000 files called ${name} in ${folder}.`);
+}
+
+// What an upload must never pick up, whoever asks: files that hold keys or sign-ins, and the folders that keep them.
+// A block list, not an allow list, because schoolwork can be anywhere: Documents, Desktop, OneDrive.
+const PRIVATE_NAMES = /^(\.env(\..*)?|\.npmrc|\.netrc|\.pgpass|\.git-credentials|oauth-store\.json(\.tmp)?|login-history\.json|supervisor-state\.json|alerts-state\.json|claude_desktop_config\.json|ngrok\.yml|id_(rsa|dsa|ecdsa|ed25519)|.+\.(pem|pfx|p12|ppk|kdbx))$/i;
+const PRIVATE_FOLDERS = [
+  '/.ssh/', '/.aws/', '/.azure/', '/.gnupg/', '/.kube/', '/.docker/', '/.mozilla/', '/.config/google-chrome/', '/.config/chromium/',
+  '/.claude/', '/.codex/', '/.cursor/', '/.gemini/', '/.codeium/', '/.lmstudio/', '/.config/claude/',
+  '/appdata/roaming/claude/', '/appdata/roaming/cursor/', '/appdata/roaming/code/user/', '/appdata/roaming/mozilla/',
+  '/appdata/local/google/chrome/', '/appdata/local/microsoft/edge/', '/appdata/local/bravesoftware/',
+  '/library/keychains/', '/library/application support/claude/', '/library/application support/code/user/',
+  '/library/application support/google/chrome/', '/library/application support/firefox/', '/library/application support/microsoft edge/',
+];
+
 /** Default link to a saved file for apps on the same computer: a file:// resource link. */
 export function localFileLink(abs, { name, mimeType, bytes } = {}) {
   return { type: 'resource_link', uri: pathToFileURL(abs).href, name: name || path.basename(abs), ...(mimeType ? { mimeType } : {}), ...(bytes ? { size: bytes } : {}), description: 'Saved on this computer' };
@@ -36,11 +81,35 @@ export function localFileLink(abs, { name, mimeType, bytes } = {}) {
 // Apps on the same computer can open a folder too; a remote link (see the Remote Edition) can only serve files.
 localFileLink.folders = true;
 
-export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fetchImpl = fetch }) {
+export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fetchImpl = fetch, privateDirs = [] }) {
+  /** Refuse a file that holds keys, sign-ins or this server's own settings. Files saved to the download folder are fine. */
+  function assertNotPrivate(abs) {
+    const real = realPath(abs);
+    const saved = cfg.downloadDir ? realPath(cfg.downloadDir) : null;
+    const settings = privateDirs.some((d) => isInside(realPath(d), real)) && !(saved && isInside(saved, real));
+    const looksPrivate = (p) => PRIVATE_NAMES.test(path.basename(p)) || PRIVATE_FOLDERS.some((f) => p.replace(/\\/g, '/').toLowerCase().includes(f));
+    if (settings || looksPrivate(abs) || looksPrivate(real)) {
+      throw new CanvasError(`Refused: ${path.basename(abs)} looks like a private file (keys, sign-ins or this server's settings), so it won't be uploaded to Canvas. Nothing was sent.`, { code: 'BLOCKED' });
+    }
+  }
+
+  /** The folder to save into: the download folder or a folder inside it, even after following links. */
+  function downloadFolder(dest) {
+    const root = cfg.downloadDir;
+    fs.mkdirSync(root, { recursive: true });
+    const target = path.resolve(root, dest || '.');
+    if (!isInside(root, target) || !isInside(realPath(root), realPath(target))) {
+      throw new CanvasError(`Refused: files can only be saved in your download folder (${root}) or a folder inside it. To save somewhere else, change CANVAS_DOWNLOAD_DIR. Nothing was saved.`, { code: 'BLOCKED' });
+    }
+    fs.mkdirSync(target, { recursive: true });
+    return target;
+  }
+
   /** Canvas file upload is a 3-step handshake: request slot -> POST to storage -> confirm. */
   async function uploadFile(endpoint, filePath, extra = {}) {
     const abs = path.resolve(filePath);
     if (!fs.existsSync(abs)) throw new CanvasError(`File not found on the computer running this server (${os.hostname()}): ${abs}`);
+    assertNotPrivate(abs);
     const stat = fs.statSync(abs);
     const name = path.basename(abs);
     // Says which step failed and on which host, never the full address: upload URLs carry signed parameters.
@@ -114,19 +183,15 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
    * Returns where it went plus a link the app can open.
    */
   async function saveDownload({ url, text, dir = cfg.downloadDir, name, contentType }) {
-    fs.mkdirSync(dir, { recursive: true });
-    const dest = path.join(dir, safeFileName(name));
-    if (text !== undefined) {
-      fs.writeFileSync(dest, text);
-    } else {
-      fs.writeFileSync(dest, Buffer.from(await (await fetchFile(url)).arrayBuffer()));
-    }
-    const bytes = fs.statSync(dest).size;
+    const folder = downloadFolder(dir);
+    const data = text !== undefined ? Buffer.from(text) : Buffer.from(await (await fetchFile(url)).arrayBuffer());
+    const dest = writeNew(folder, safeFileName(name), data);
+    const bytes = data.length;
     return { saved_to: dest, bytes, link: fileLink(dest, { name: path.basename(dest), mimeType: contentType, bytes }) };
   }
 
   /** A link to a folder of saved files, where the app can open folders (same computer only); otherwise null. */
   const folderLink = (dir, name) => (fileLink.folders ? { type: 'resource_link', uri: pathToFileURL(dir).href, name, description: 'Folder on this computer' } : null);
 
-  return { uploadFile, assignmentPreview, activeCourses, fetchFile, saveDownload, folderLink };
+  return { uploadFile, assertNotPrivate, assignmentPreview, activeCourses, fetchFile, saveDownload, downloadFolder, folderLink };
 }

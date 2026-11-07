@@ -234,6 +234,18 @@ test('no tool lets an ID point the request somewhere else', { timeout: 120000 },
   }
 });
 
+test('a list of IDs is checked too', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    const r = await client.callTool({ name: 'export_all_courses', arguments: { course_ids: ['1', '2/discussion_topics/5/entries?x='], confirm: true } });
+    assert.equal(r.isError, true, text(r));
+    assert.deepEqual(calls, []);
+  } finally {
+    await close();
+  }
+});
+
 test('real Canvas IDs still work', async () => {
   const calls = [];
   const { client, close } = await connect({ calls });
@@ -299,6 +311,163 @@ test('a name in the tool lists that matches nothing is reported, not silently ig
   assert.deepEqual(typo.config.unknown_tool_names, ['raw_canvas_requests']);
   const fine = await toolsWith({ CANVAS_DISABLE_TOOLS: 'raw_canvas_request,inbox' });
   assert.equal(fine.config.unknown_tool_names, undefined);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The server's disk: downloads stay in the download folder, nothing is overwritten, private files are never uploaded
+// ---------------------------------------------------------------------------------------------------------------
+
+const fileRecord = (_m, p) => (/^\/files\/1$/.test(p) ? { body: { id: '1', display_name: 'Run Me.bat', 'content-type': 'text/plain', size: 5, url: `${BASE}/files/1/download` } } : null);
+
+test('downloads cannot leave the download folder', async () => {
+  const { client, dir, close } = await connect({ override: fileRecord });
+  try {
+    const outside = path.join(dir, 'pretend-startup-folder');
+    for (const destDir of [outside, '../pretend-startup-folder', '..', path.join(dir, 'downloads', '..', 'pretend-startup-folder')]) {
+      for (const [name, args] of [['download_file', { file_id: '1' }], ['download_media_captions', { media_id: 'm1' }], ['download_all_course_files', { course_id: '1' }], ['export_course_archive', { course_id: '1', timeout_seconds: 1 }]]) {
+        const r = await client.callTool({ name, arguments: { ...args, dest_dir: destDir, confirm: true } });
+        assert.equal(r.isError, true, `${name} must refuse ${destDir}: ${text(r)}`);
+        assert.match(text(r), /download folder/);
+      }
+    }
+    assert.equal(fs.existsSync(outside), false);
+  } finally {
+    await close();
+  }
+});
+
+test('a link inside the download folder cannot lead out of it', async () => {
+  const { client, dir, close } = await connect({ override: fileRecord });
+  try {
+    const downloads = path.join(dir, 'downloads');
+    const outside = path.join(dir, 'outside');
+    fs.mkdirSync(downloads, { recursive: true });
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(downloads, 'link'), 'junction');
+    const r = await client.callTool({ name: 'download_file', arguments: { file_id: '1', dest_dir: 'link' } });
+    assert.equal(r.isError, true, text(r));
+    assert.deepEqual(fs.readdirSync(outside), []);
+    const deeper = await client.callTool({ name: 'download_file', arguments: { file_id: '1', dest_dir: path.join('link', 'new', 'folder') } });
+    assert.equal(deeper.isError, true, text(deeper));
+    assert.deepEqual(fs.readdirSync(outside), []);
+  } finally {
+    await close();
+  }
+});
+
+test('a folder inside the download folder works, by name or by full path', async () => {
+  const { client, dir, close } = await connect({ override: fileRecord });
+  try {
+    await client.callTool({ name: 'download_file', arguments: { file_id: '1', dest_dir: 'week1' } });
+    await client.callTool({ name: 'download_file', arguments: { file_id: '1', dest_dir: path.join(dir, 'downloads', 'week2') } });
+    assert.ok(fs.existsSync(path.join(dir, 'downloads', 'week1', 'Run Me.bat')));
+    assert.ok(fs.existsSync(path.join(dir, 'downloads', 'week2', 'Run Me.bat')));
+  } finally {
+    await close();
+  }
+});
+
+test('a relative download folder is not nested inside itself', async () => {
+  const { client, dir, close } = await connect({ override: fileRecord, env: (d) => ({ CANVAS_DOWNLOAD_DIR: path.relative(process.cwd(), path.join(d, 'relative')) }) });
+  try {
+    await client.callTool({ name: 'download_all_course_files', arguments: { course_id: '1' } });
+    assert.ok(fs.existsSync(path.join(dir, 'relative', 'BIO-101')), 'saved under the folder itself');
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'relative')), ['BIO-101'], 'and not in a copy of it');
+  } finally {
+    await close();
+  }
+});
+
+test('a download never replaces a different file, and the same file is not saved twice', async () => {
+  const { client, dir, close } = await connect({ override: fileRecord });
+  try {
+    const folder = path.join(dir, 'downloads');
+    const first = path.join(folder, 'Run Me.bat');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(first, 'my own work');
+    const r = await client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.equal(fs.readFileSync(first, 'utf8'), 'my own work', 'the existing file is untouched');
+    assert.match(text(r), /Run Me \(1\)\.bat/);
+    await client.callTool({ name: 'download_file', arguments: { file_id: '1' } });
+    assert.equal(fs.existsSync(path.join(folder, 'Run Me (2).bat')), false, 'identical bytes are not saved again');
+  } finally {
+    await close();
+  }
+});
+
+const uploadHandshake = (method, p, u) => {
+  if (method === 'POST' && u.host === 'storage.example.net') return { status: 201, body: { id: '55', display_name: 'x', size: 2 } };
+  if (method === 'POST' && /\/files$/.test(p)) return { body: { upload_url: 'https://storage.example.net/up', upload_params: {} } };
+  return null;
+};
+const UPLOAD_TOOLS = [['upload_to_my_files', {}], ['upload_submission_file', { course_id: '1', assignment_id: '1' }], ['upload_comment_attachment', { course_id: '1', assignment_id: '1' }], ['submit_assignment_file', { course_id: '1', assignment_id: '1' }]];
+
+test('private files are never uploaded, whichever tool asks', async () => {
+  const calls = [];
+  const { client, dir, close } = await connect({ calls, override: uploadHandshake });
+  try {
+    const names = ['.env', '.env.local', '.env.backup-20260101-000000', 'oauth-store.json', 'oauth-store.json.tmp', 'login-history.json', 'id_rsa', 'id_ed25519', 'server.pem', 'cert.pfx', '.npmrc', '.git-credentials', 'claude_desktop_config.json', 'ngrok.yml'];
+    const folders = [['.ssh', 'notes.txt'], ['.aws', 'config'], ['AppData', 'Roaming', 'Claude', 'notes.txt'], ['AppData', 'Local', 'Google', 'Chrome', 'User Data', 'notes.txt'], ['Library', 'Application Support', 'Google', 'Chrome', 'notes.txt'], ['state', 'notes.txt']];
+    const files = [...names.map((n) => path.join(dir, n)), ...folders.map((f) => path.join(dir, ...f))];
+    for (const f of files) {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, 'pretend secret');
+      for (const [name, args] of UPLOAD_TOOLS) {
+        calls.length = 0;
+        const r = await client.callTool({ name, arguments: { ...args, file_path: f, confirm: true } });
+        assert.equal(r.isError, true, `${name} must refuse ${f}: ${text(r)}`);
+        assert.equal(calls.filter((c) => c.method === 'POST').length, 0, `${name} must not start an upload for ${f}`);
+      }
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('a link to a private file is refused too', async () => {
+  const { client, dir, close } = await connect({ override: uploadHandshake });
+  try {
+    const secret = path.join(dir, '.env');
+    const innocent = path.join(dir, 'essay.txt');
+    fs.writeFileSync(secret, 'pretend secret');
+    try { fs.symlinkSync(secret, innocent, 'file'); } catch { return; } // Windows needs a permission for file links
+    const r = await client.callTool({ name: 'upload_to_my_files', arguments: { file_path: innocent, confirm: true } });
+    assert.equal(r.isError, true);
+  } finally {
+    await close();
+  }
+});
+
+test('ordinary schoolwork still uploads, from any folder', async () => {
+  const { client, dir, close } = await connect({ override: uploadHandshake });
+  try {
+    for (const rel of [['Documents', 'essay.docx'], ['OneDrive', 'School', 'deck.key'], ['Desktop', 'environment.pdf'], ['Downloads', 'env-notes.txt']]) {
+      const f = path.join(dir, ...rel);
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, 'hi');
+      const r = await client.callTool({ name: 'upload_submission_file', arguments: { course_id: '1', assignment_id: '1', file_path: f, confirm: true } });
+      assert.doesNotMatch(text(r), /Refused/, rel.join('/'));
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('a file in a download folder inside the settings folder can still be uploaded', async () => {
+  const { client, dir, close } = await connect({ override: uploadHandshake, env: (d) => ({ CANVAS_DOWNLOAD_DIR: path.join(d, 'state', 'canvas-downloads') }) });
+  try {
+    const saved = path.join(dir, 'state', 'canvas-downloads', 'notes.txt');
+    const settings = path.join(dir, 'state', 'notes.txt');
+    fs.mkdirSync(path.dirname(saved), { recursive: true });
+    fs.writeFileSync(saved, 'hi');
+    fs.writeFileSync(settings, 'hi');
+    const fine = await client.callTool({ name: 'upload_to_my_files', arguments: { file_path: saved, confirm: true } });
+    assert.doesNotMatch(text(fine), /Refused/);
+    const refused = await client.callTool({ name: 'upload_to_my_files', arguments: { file_path: settings, confirm: true } });
+    assert.match(text(refused), /Refused/);
+  } finally {
+    await close();
+  }
 });
 
 test('the endpoints this server needs are not caught by the blocks', async () => {

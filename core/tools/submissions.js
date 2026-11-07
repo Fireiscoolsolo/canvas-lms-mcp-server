@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
+  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, assertNotPrivate, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
 
   const D = 'submissions';
 
@@ -67,6 +67,7 @@ export default function register(ctx) {
   };
   submitFile.preview = async (a) => {
     const abs = path.resolve(a.file_path);
+    assertNotPrivate(abs);
     return { ...(await assignmentPreview(a)), submission_type: 'online_upload', file_path: abs, file_exists: fs.existsSync(abs), file_size_bytes: fs.existsSync(abs) ? fs.statSync(abs).size : null };
   };
   tool({ name: 'submit_assignment_file', group: D, write: true, confirm: true, description: 'Upload a local file and submit it to an assignment.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string().describe('Absolute path to the local file'), comment: z.string().optional() }, handler: submitFile });

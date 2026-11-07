@@ -69,7 +69,7 @@ export function createCanvasServer({
   const tokenWatch = createTokenWatch({ canvas, token: cfg.token, base: cfg.base, log: safeLog });
   const state = createStateStore(stateDir);
   const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog });
-  const shared = createShared({ canvas, cfg, dates, fileLink, ...(fetchImpl ? { fetchImpl } : {}) });
+  const shared = createShared({ canvas, cfg, dates, fileLink, privateDirs: stateDir ? [stateDir] : [], ...(fetchImpl ? { fetchImpl } : {}) });
 
   /** Refuse to SEND text that still carries fence markers: quoted Canvas content was passed through unfiltered. */
   const assertClean = (text, label = 'content') => {
