@@ -56,7 +56,7 @@ const INSTRUCTIONS = [
  */
 export function createCanvasServer({
   env = process.env, version = '0.0.0', defaultDownloadDir, stateDir = null, log = () => {},
-  elicitation = true, fileLink = localFileLink, missingTokenHelp = '', secrets = [], fetchImpl,
+  elicitation = true, fileLink = localFileLink, missingTokenHelp = '', secrets = [], fetchImpl, toolTimeoutMs,
 } = {}) {
   const cfg = readConfig(env, { defaultDownloadDir });
   const hidden = [cfg.token, ...secrets];
@@ -65,10 +65,26 @@ export function createCanvasServer({
   applyNetworkSettings(cfg);
   const canvas = new CanvasClient({ api: cfg.api, token: cfg.token, ttl: cfg.cacheTtl, base: cfg.base, ...(fetchImpl ? { fetchImpl } : {}) });
   const server = new McpServer({ name: SERVER_NAME, version }, { instructions: INSTRUCTIONS });
+  // Every tool, prompt and resource registered below is noted, so newServer() can register the same ones on another
+  // server. The handlers are the same functions, so everything they share stays shared.
+  const registered = [];
+  for (const method of ['registerTool', 'registerPrompt', 'registerResource']) {
+    const original = server[method].bind(server);
+    server[method] = (...args) => { registered.push([method, args]); return original(...args); };
+  }
+  /**
+   * Another MCP server with the same tools, sharing this one's Canvas client, cache, confirmation tokens and state.
+   * The HTTP server makes one per request, so a slow tool never holds up a request from another device.
+   */
+  const newServer = () => {
+    const copy = new McpServer({ name: SERVER_NAME, version }, { instructions: INSTRUCTIONS });
+    for (const [method, args] of registered) copy[method](...args);
+    return copy;
+  };
   const dates = makeDates(cfg.tz);
   const tokenWatch = createTokenWatch({ canvas, token: cfg.token, base: cfg.base, log: safeLog });
   const state = createStateStore(stateDir);
-  const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog });
+  const reg = createRegistry({ server, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog, ...(toolTimeoutMs ? { toolTimeoutMs } : {}) });
   const shared = createShared({ canvas, cfg, dates, fileLink, privateDirs: stateDir ? [stateDir] : [], ...(fetchImpl ? { fetchImpl } : {}) });
 
   /** Refuse to SEND text that still carries fence markers: quoted Canvas content was passed through unfiltered. */
@@ -116,5 +132,5 @@ export function createCanvasServer({
     safeLog(`registered ${reg.registry.length} tools (profile=${cfg.profile}, writes=${cfg.allowWrites ? 'on' : 'off'}, skipped=${reg.skipped()}${filters ? `, ${filters}` : ''})`);
   }
 
-  return { server, cfg, canvas, registry: reg.registry, skipped: reg.skipped, tokenWatch, state, log: safeLog, start };
+  return { server, newServer, cfg, canvas, registry: reg.registry, skipped: reg.skipped, tokenWatch, state, log: safeLog, start };
 }

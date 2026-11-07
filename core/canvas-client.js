@@ -3,6 +3,27 @@
 //   - As the rate-limit quota runs low the client waits a little before each request instead of hitting the wall.
 //   - Pagination follows the Link header (case-insensitively), never page counters.
 //   - Errors are written for people: what happened and how to fix it, not a status code and a stack trace.
+//   - A tool call the app gave up on, or one that ran too long, stops before its next request (see callContext).
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/**
+ * The tool call a request belongs to, as { signal }. The registry runs every tool inside it, so the client can tell
+ * when that call was cancelled or ran past its time limit without each tool passing a signal around.
+ */
+export const callContext = new AsyncLocalStorage();
+
+const stoppedError = () => new CanvasError('Stopped: the app stopped waiting for this, or it ran too long. Nothing more was asked of Canvas.', { code: 'STOPPED' });
+
+/** Throw if the current tool call has been stopped. */
+export function checkStopped(signal = callContext.getStore()?.signal) {
+  if (signal?.aborted) throw stoppedError();
+}
+
+/** A request's time limit, joined with its call's stop signal when it is safe to cut the request off. */
+function limitFor(timeoutMs, stop, cuttable) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return stop && cuttable && typeof AbortSignal.any === 'function' ? AbortSignal.any([stop, timeout]) : timeout;
+}
 
 export class CanvasError extends Error {
   constructor(message, { status, url, body, code, host, attempts, step } = {}) {
@@ -178,10 +199,16 @@ export function networkError(e, { url, base = '', attempts = 1, timeoutMs = 0 })
  * out of time isn't repeated, because it would only wait just as long again.
  */
 export async function fetchWithRetry(fetchImpl, url, init, { retries = 3, base = '', timeoutMs }) {
+  const stop = callContext.getStore()?.signal;
   for (let attempt = 1; ; attempt++) {
+    checkStopped(stop);
     try {
-      return await fetchImpl(url, { ...init(), signal: AbortSignal.timeout(timeoutMs) });
+      // Uploads are never cut off part way. A download can be, since nothing changes in Canvas.
+      const request = init();
+      const cuttable = !request.method || request.method.toUpperCase() === 'GET';
+      return await fetchImpl(url, { ...request, signal: limitFor(timeoutMs, stop, cuttable) });
     } catch (e) {
+      checkStopped(stop);
       if (attempt > retries || timedOut(e)) throw networkError(e, { url, base, attempts: attempt, timeoutMs });
       await sleep(500 * attempt);
     }
@@ -247,12 +274,14 @@ export class CanvasClient {
     const url = this.buildUrl(p, params);
     refuseBlocked(method, url);
     const idempotent = method === 'GET' || repeatable;
+    const stop = callContext.getStore()?.signal;
     return this.enqueue(async () => {
       let attempt = 0;
       for (;;) {
         attempt++;
         const wait = throttleDelay(this.lastRemaining);
         if (wait) await sleep(wait);
+        checkStopped(stop); // a stopped call never starts another request, even one already waiting its turn
         this.requestCount++;
         const h = {
           Authorization: `Bearer ${this.token}`,
@@ -267,8 +296,10 @@ export class CanvasClient {
         }
         let res;
         try {
-          res = await this.fetch(url, { method, headers: h, body: payload, signal: AbortSignal.timeout(this.timeoutMs) });
+          // A read can be cut off when its call stops. A write never is: it either reaches Canvas whole or not at all.
+          res = await this.fetch(url, { method, headers: h, body: payload, signal: limitFor(this.timeoutMs, stop, method === 'GET') });
         } catch (e) {
+          checkStopped(stop);
           if (attempt <= retries && (idempotent || neverSent(e))) { await sleep(500 * attempt); continue; }
           throw networkError(e, { url, base: this.base, attempts: attempt, timeoutMs: this.timeoutMs });
         }

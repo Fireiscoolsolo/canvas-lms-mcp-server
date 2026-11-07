@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { ElicitResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
-import { CanvasError, hideAddresses } from './canvas-client.js';
+import { CanvasError, callContext, hideAddresses } from './canvas-client.js';
 import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, DEFAULT_PAGE_SIZE } from './format.js';
 import { applyFence, fenceComments, fenceProse } from './text.js';
 
@@ -66,7 +66,10 @@ export function confirmMessage(name, preview) {
   return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
 }
 
-export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {} }) {
+/** How long a tool that only reads may run. Longer than the 15 minutes a confirmation question waits for an answer. */
+export const TOOL_TIMEOUT_MS = 20 * 60000;
+
+export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {}, toolTimeoutMs = TOOL_TIMEOUT_MS }) {
   const registry = [];
   const known = new Set();
   let skipped = 0;
@@ -226,20 +229,44 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       ...(output ? { outputSchema: output } : {}),
       annotations: { ...annotationsFor({ name, write, confirm, offline, local }), ...doc.annotations },
     }, async (args = {}, extra = {}) => {
-      try {
-        const bad = unsafeId(args);
-        if (bad) return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`);
-        if (!offline) {
-          const problem = setupProblem();
-          if (problem) return fail(problem);
+      const run = async (signal) => {
+        try {
+          const bad = unsafeId(args);
+          if (bad) return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`);
+          if (!offline) {
+            const problem = setupProblem();
+            if (problem) return fail(problem);
+          }
+          const io = { progress: progressFor(extra), signal };
+          if (gated(args)) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io);
+          return finish(await handler(args, io));
+        } catch (e) {
+          if (e?.code !== 'STOPPED') logFailure(name, e);
+          if (e instanceof CanvasError) return fail(e.message);
+          return fail(`${name} failed: ${e.message}`);
         }
-        const io = { progress: progressFor(extra), signal: extra.signal };
-        if (gated(args)) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io);
-        return finish(await handler(args, io));
-      } catch (e) {
-        logFailure(name, e);
-        if (e instanceof CanvasError) return fail(e.message);
-        return fail(`${name} failed: ${e.message}`);
+      };
+      // A change to Canvas always runs to the end, so it never stops between its steps.
+      if (write) return run(extra.signal);
+      // Anything else stops asking Canvas when the app gives up on it, or once it has run too long.
+      const stop = new AbortController();
+      const cancel = () => stop.abort();
+      if (extra.signal?.aborted) cancel();
+      else extra.signal?.addEventListener?.('abort', cancel, { once: true });
+      let timer;
+      const ceiling = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          cancel();
+          resolve(fail(`${name} was stopped after ${Math.round(toolTimeoutMs / 60000) || 1} minute(s), because it was taking too long. Try a smaller request, such as one course or a shorter date range.`));
+        }, toolTimeoutMs);
+        timer.unref?.();
+      });
+      const work = callContext.run({ signal: stop.signal }, () => run(stop.signal));
+      try {
+        return await Promise.race([work, ceiling]);
+      } finally {
+        clearTimeout(timer);
+        extra.signal?.removeEventListener?.('abort', cancel);
       }
     });
     registry.push({ name, group, write, confirm: Boolean(confirm), description });

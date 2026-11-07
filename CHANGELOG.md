@@ -33,6 +33,8 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **Secret files are private.** On Linux and macOS, `.env`, its backups, `oauth-store.json` and `login-history.json` are now written so only your user can read them. `.env.backup-*` and temp files are now in `.gitignore`.
 
 ### Fixed
+- **One slow tool no longer holds up every device.** Requests to `/mcp` were handled one at a time, so a five-minute export kept your phone waiting five minutes for anything at all. Each request now gets its own server, sharing one Canvas connection, so other requests answer straight away.
+- **A tool the app stops waiting for stops asking Canvas.** When your AI app cancels a call or the connection drops, a tool that only reads stops before its next Canvas request instead of running to the end. Anything that changes Canvas always finishes, so a submission never stops half way. A read that runs for 20 minutes is stopped and says so.
 - **An interrupted handoff no longer signs everyone out.** A standby computer saves its copy of the sign-ins whole or not at all, and only if the copy looks right. Before, a crash or a bad answer part way could leave a broken file. The login history is saved the same way.
 - **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
 - **Apps on the same computer can sign in on any port.** An app that came back on a different port than it registered got past the first sign-in step and was then refused at the password, although the standard allows it.

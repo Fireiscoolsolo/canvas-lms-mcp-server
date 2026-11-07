@@ -136,30 +136,24 @@ async function main() {
     return;
   }
 
-  // Stateless Streamable HTTP: the 200+ tools above are registered once on
-  // the single shared `server`, but the SDK requires a FRESH transport per
-  // request in stateless mode (reusing one throws after its first request:
-  // "Stateless transport cannot be reused across requests"). Since a Server
-  // can only be connect()ed to one transport at a time, requests are run
-  // through a serial queue (mirrors the CanvasClient.enqueue pattern)
-  // so concurrent MCP clients (Desktop can spawn several bridge processes at
-  // once) never race to connect() while another request is still attached.
-  let mcpQueue = Promise.resolve();
-  function queueMcp(req, res) {
-    const run = mcpQueue.then(() => processMcp(req, res), () => processMcp(req, res));
-    mcpQueue = run.then(() => undefined, () => undefined);
-    return run;
-  }
+  // Stateless Streamable HTTP: the SDK needs a fresh transport for every
+  // request, and a server can only be connected to one transport at a time.
+  // So every request gets its own server, with the same tools registered on
+  // it (newServer() in core/index.js). They share one Canvas client, cache,
+  // confirmation tokens and state, and Canvas calls still go out one at a
+  // time, but a slow tool on one device never holds up a request from
+  // another. When the app stops waiting, its server closes, and a tool that
+  // only reads stops before its next Canvas request.
   async function processMcp(req, res) {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const one = built.newServer();
+    res.on('close', () => { one.close().catch(() => {}); });
     try {
-      await server.connect(transport);
+      await one.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (e) {
       log(`mcp request failed: ${e.stack || e.message}`);
       if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal server error' } });
-    } finally {
-      await server.close().catch(() => {});
     }
   }
 
@@ -307,8 +301,8 @@ async function main() {
     res.set('Allow', 'POST, DELETE');
     res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method Not Allowed: server-initiated streams are not supported' } });
   });
-  app.post('/mcp', mcpAuthMiddleware, queueMcp);
-  app.delete('/mcp', mcpAuthMiddleware, queueMcp);
+  app.post('/mcp', mcpAuthMiddleware, processMcp);
+  app.delete('/mcp', mcpAuthMiddleware, processMcp);
   // Public, so the setup app and uptime checkers can see the server is up. It says nothing about your account.
   app.get('/healthz', (_req, res) => res.json({ ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }));
 

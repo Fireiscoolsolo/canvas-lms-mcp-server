@@ -184,6 +184,34 @@ test('over real HTTP, a preview token survives between requests and the token st
   }
 });
 
+test('a slow tool on one device never holds up another', { timeout: 30000 }, async () => {
+  const listen = (handler) => new Promise((r) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => r(s)); });
+  const canvas = await listen((req, res) => {
+    const reply = () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"id":"1"}'); };
+    if (req.url.startsWith('/api/v1/slow')) setTimeout(reply, 3000); else reply();
+  });
+  const s = await start('index.js', { CANVAS_BASE_URL: `http://127.0.0.1:${canvas.address().port}` });
+  let id = 0;
+  const rpc = (method, params) => fetch(`http://127.0.0.1:${s.port}/mcp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+  }).then((r) => r.text());
+  try {
+    assert.equal(s.ready, true, s.output());
+    const slow = rpc('tools/call', { name: 'raw_canvas_request', arguments: { method: 'GET', path: '/slow' } });
+    await new Promise((r) => setTimeout(r, 300));
+    const started = Date.now();
+    const list = await rpc('tools/list', {});
+    const waited = Date.now() - started;
+    assert.match(list, /raw_canvas_request/);
+    assert.ok(waited < 1500, `the tool list took ${waited} ms behind a 3-second tool`);
+    assert.match(await slow, /"id"/, 'and the slow tool still finished');
+  } finally {
+    await s.stop();
+    canvas.close();
+  }
+});
+
 const HOSTILE = "x'+(document.title='XSS-RAN',event.preventDefault(),(()=>{throw 0})())+'";
 const row = (app) => ({ sessions: [{ client_id: 'c1', app, signed_in: false, registered: '2026-11-01T00:00:00Z' }] });
 
