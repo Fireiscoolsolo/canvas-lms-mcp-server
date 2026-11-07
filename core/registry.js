@@ -1,5 +1,6 @@
 // Tool registration shared by every tool file: which tools are on, their hints for the AI app, confirmation of
 // actions other people see, progress updates, paging of long lists and the token-expiry heads-up.
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { ElicitResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
@@ -29,6 +30,14 @@ const ALWAYS = new Set(['search_tools', 'test_connection', 'get_server_config'])
 // Canvas's own forms (self, sis_course_id:BIO-101, 1234~5678, hex:...) don't need them.
 const UNSAFE_ID = /[/\\?#%\u0000-\u001f\u007f]|^\.{1,2}$/;
 const unsafeId = (args) => Object.keys(args).find((k) => (k === 'id' || /_ids?$/.test(k)) && [].concat(args[k]).some((v) => typeof v === 'string' && UNSAFE_ID.test(v)));
+
+const TOKEN_MINUTES = 5;
+
+// Facts about the target a confirmation is tied to. If one changes after the preview, the preview no longer says what would happen.
+const TARGET_STATE = ['assignment_id', 'due_at', 'allowed_attempts', 'attempts_used', 'already_submitted_at', 'file_size_bytes', 'file_sha256', 'updated_at', 'last_message_at', 'start_at', 'end_at'];
+
+const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
+const digest = (v) => crypto.createHash('sha256').update(JSON.stringify(sorted(v))).digest();
 
 const DESTRUCTIVE = /^(delete|remove|leave|cancel)_/;
 const IDEMPOTENT = /^(mark_|set_|star_|unstar_|subscribe_|unsubscribe_|update_|add_favorite_|remove_favorite_|reset_|dismiss_|delete_|remove_)/;
@@ -125,6 +134,51 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
     }
   }
 
+  // One-time tokens, in memory only. One per tool and exact request, so a fresh preview replaces the last one.
+  const pending = new Map();
+
+  function issueToken(key, state) {
+    const now = Date.now();
+    for (const [k, held] of pending) if (held.expires < now) pending.delete(k);
+    const token = crypto.randomBytes(16).toString('base64url');
+    pending.set(key, { token, state, expires: now + TOKEN_MINUTES * 60000 });
+    return token;
+  }
+
+  /** 'ok' uses the token up. The check and the delete happen together, so two racing calls can't both pass. */
+  function redeem(key, token, state) {
+    const held = pending.get(key);
+    if (!held || held.expires < Date.now() || !crypto.timingSafeEqual(digest(String(token)), digest(held.token))) return 'mismatch';
+    pending.delete(key);
+    return held.state === state ? 'ok' : 'changed';
+  }
+
+  const HEADINGS = {
+    preview: 'DRY RUN. Nothing was sent to Canvas.\nThis action is visible to other people or can\'t be fully undone.',
+    mismatch: 'That confirmation didn\'t work, so nothing was sent to Canvas: it was already used, it expired, or the request changed.',
+    changed: 'This changed after the preview, so nothing was sent to Canvas. Check the new details below.',
+  };
+
+  /**
+   * Run a tool that needs a person's yes. An app that can ask always does, whatever the arguments say. Otherwise the
+   * preview comes back with a one-time token. The model sees that token, so it proves the request wasn't changed after
+   * the preview, not that a person agreed: that still rests on the model showing the preview and on the app's own approval.
+   */
+  async function confirmThenRun(name, handler, showPreview, args, extra, io) {
+    const { confirm: _confirm, confirm_token: token, ...request } = args;
+    if (token) canvas.cache.clear(); // the check below must see Canvas as it is now
+    const details = (typeof showPreview === 'function' ? await showPreview(request, io) : null) || request;
+    const run = async () => finish(await handler({ ...request, confirm: true }, io));
+    const answer = await askToConfirm(name, details, extra);
+    if (answer === 'accept') return run();
+    if (answer === 'decline') return ok(details, 'Cancelled. Nothing was sent to Canvas.');
+    const key = `${name}:${digest(request).toString('hex')}`;
+    const state = digest(pick(details, TARGET_STATE)).toString('hex');
+    const outcome = args.confirm === true && token ? redeem(key, token, state) : 'preview';
+    if (outcome === 'ok') return run();
+    return ok(details, `${HEADINGS[outcome]}\nShow these details to the user and ask whether to go ahead. If they say yes, call ${name} again with the same arguments, confirm=true and confirm_token="${issueToken(key, state)}". It works once, for exactly this request, for ${TOKEN_MINUTES} minutes.`);
+  }
+
   function finish(result) {
     const first = result?.content?.[0];
     if (first?.type === 'text') {
@@ -139,12 +193,14 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
    * Register a tool.
    *   name, description, schema (zod raw shape), handler(args, { progress, signal }), group
    *   write   - changes something (removed when CANVAS_ALLOW_WRITES=false)
-   *   confirm - visible to others or irreversible: asks the user first, or needs confirm=true after a dry run
+   *   confirm - visible to others or irreversible: asks the user first, or needs a preview and its one-time token.
+   *             A function decides per call, for a tool that only sometimes changes something
+   *   preview - async (args) => what the user should see before saying yes. Also read from handler.preview
    *   offline - never calls Canvas, so it works before the token is set
    *   local   - only writes files on this computer (downloads), never changes Canvas
    *   output  - zod shape of the structured result; the handler must then return ok(..., { structured })
    */
-  function tool({ name, description, schema = {}, handler, write = false, confirm = false, group = '', offline = false, local = false, output }) {
+  function tool({ name, description, schema = {}, handler, preview, write = false, confirm = false, group = '', offline = false, local = false, output }) {
     known.add(name);
     if (group) known.add(group);
     if (!enabled(name, group, write)) { skipped++; return; }
@@ -153,9 +209,14 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
     if (doc.description) description = doc.description;
     let shape = documentParams(schema, doc.params);
     let desc = description;
+    const gated = typeof confirm === 'function' ? confirm : () => confirm;
     if (confirm) {
-      shape = { ...shape, confirm: z.boolean().optional().describe('Must be true to actually execute. Omit or set false to get a dry-run preview first.') };
-      desc = `${description} [IRREVERSIBLE: call without confirm=true first to preview, then re-call with confirm=true. Apps that can ask the user directly will show a confirmation instead.]`;
+      shape = {
+        ...shape,
+        confirm: z.boolean().optional().describe('Set to true together with confirm_token to carry out a request you already previewed.'),
+        confirm_token: z.string().optional().describe('The one-time token from the preview. Only use it after the user has said yes.'),
+      };
+      desc = `${description} [NEEDS CONFIRMATION: call it once for a preview and a confirm_token, show the preview to the user, and only if they say yes call it again with the same arguments, confirm=true and that confirm_token. Apps that can ask the user directly show a confirmation instead.]`;
     }
 
     server.registerTool(name, {
@@ -173,13 +234,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
           if (problem) return fail(problem);
         }
         const io = { progress: progressFor(extra), signal: extra.signal };
-        if (confirm && args.confirm !== true) {
-          const preview = typeof handler.preview === 'function' ? await handler.preview(args, io) : null;
-          const answer = await askToConfirm(name, preview || args, extra);
-          if (answer === 'accept') return finish(await handler({ ...args, confirm: true }, io));
-          if (answer === 'decline') return ok(preview || args, 'Cancelled. Nothing was sent to Canvas.');
-          return ok(preview || args, `DRY RUN. Nothing was sent to Canvas.\nThis action is visible to other people and cannot be fully undone.\nReview the details below, then call ${name} again with confirm=true to execute.`);
-        }
+        if (gated(args)) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io);
         return finish(await handler(args, io));
       } catch (e) {
         logFailure(name, e);
@@ -187,7 +242,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
         return fail(`${name} failed: ${e.message}`);
       }
     });
-    registry.push({ name, group, write, confirm, description });
+    registry.push({ name, group, write, confirm: Boolean(confirm), description });
   }
 
   /**

@@ -95,7 +95,8 @@ export default function register(ctx) {
   });
 
   tool({
-    name: 'update_planner_note', group: P, write: true,
+    name: 'update_planner_note', group: P, write: true, confirm: true,
+    preview: async (a) => ({ action: 'CHANGE this planner note', ...a }),
     description: 'Change one of your Canvas planner notes: its title, details, date or course.',
     schema: {
       note_id: ID.describe('Planner note ID, from list_planner_notes or list_planner_items (plannable_id of a planner_note).'),
@@ -111,7 +112,8 @@ export default function register(ctx) {
   });
 
   tool({
-    name: 'delete_planner_note', group: P, write: true,
+    name: 'delete_planner_note', group: P, write: true, confirm: true,
+    preview: async (a) => { const n = await canvas.get(`/planner_notes/${a.note_id}`); return { action: 'DELETE this planner note', title: n.title, todo_date: n.todo_date, updated_at: n.updated_at }; },
     description: 'Delete one of your Canvas planner notes. This only affects your own notes.',
     schema: { note_id: ID.describe('Planner note ID, from list_planner_notes.') },
     handler: async (a) => { await canvas.del(`/planner_notes/${a.note_id}`); return ok({ deleted: a.note_id }, 'Deleted.'); },

@@ -30,7 +30,7 @@ export const COMMON_PARAMS = {
   limit: 'Maximum number of items to return (one page of results). Smaller is faster.',
   page: 'Which page of results to show, starting at 1. Use it when a result says there are more.',
   search_term: 'Optional text filter on names or titles (at least 2 characters, case-insensitive).',
-  dest_dir: 'Local folder to save into. Defaults to the server\'s download folder (CANVAS_DOWNLOAD_DIR).',
+  dest_dir: 'Folder to save into: the server\'s download folder (CANVAS_DOWNLOAD_DIR) or a folder inside it, such as "week1". Anywhere else is refused. Leave it out to use the download folder itself.',
   file_path: 'Absolute path of the local file to upload, e.g. "C:/Users/me/essay.pdf".',
   group_id: 'Student group ID (numeric string). Get it from list_my_groups.',
   comment: 'Comment text, visible to your instructor.',
@@ -321,7 +321,7 @@ export const TOOL_DOCS = {
   update_notification_preference: { annotations: { destructiveHint: false, idempotentHint: true } },
 
   // ---- meta ----
-  raw_canvas_request: { description: 'Call any Canvas REST API endpoint directly, for anything the other tools don\'t cover. GET is read-only. POST, PUT and DELETE can change data: they are blocked when CANVAS_ALLOW_WRITES=false, need confirm=true, and quiz-submission writes are always refused.', params: { max_items: 'With paginate=true, stop after this many items. Default 200.' }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false } },
+  raw_canvas_request: { description: 'Call a Canvas REST API endpoint directly, for anything the other tools don\'t cover. Requests only go to your Canvas, inside /api/v1. GET is read-only. POST, PUT and DELETE can change data: they are blocked when CANVAS_ALLOW_WRITES=false and need confirmation. Quiz-submission writes and endpoints that hand out sign-ins or tokens are always refused.', params: { max_items: 'With paginate=true, stop after this many items. Default 200.' }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false } },
   search_tools: { description: 'Search this server\'s tools by keyword and return matching names with one-line descriptions. Read-only, makes no Canvas calls and works before a token is set. Use it to find the right tool among the 200+ available.', params: { query: 'Keyword to look for in tool names and descriptions, e.g. "grade". Omit to list everything.', group: 'Optional group: identity, courses, assignments, submissions, grades, quizzes, discussions, inbox, calendar, content, groups, rubrics, search, planner, planning or meta.' } },
   test_connection: { description: 'Check the token, school URL and access end to end: identity, courses, planner, inbox and missing submissions, and report any features your school disabled. Read-only. Run this first if anything fails.' },
   get_server_config: { description: 'Show this server\'s settings (school URL, profile, write mode, cache, time zone, download folder) and whether a token is present, without revealing it. Read-only, makes no Canvas calls and works before a token is set, so use it first to diagnose setup problems.' },

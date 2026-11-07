@@ -8,7 +8,12 @@ export default function register(ctx) {
 
   tool({
     name: 'raw_canvas_request', group: O,
-    description: 'Escape hatch: call ANY Canvas API endpoint directly. Covers the entire API surface, including anything this server does not wrap. GET is unrestricted; POST/PUT/DELETE are gated by CANVAS_ALLOW_WRITES and require confirm=true.',
+    description: 'Escape hatch: call almost any Canvas API endpoint directly, including anything this server does not wrap. GET needs no confirmation; POST/PUT/DELETE are gated by CANVAS_ALLOW_WRITES and need confirmation.',
+    confirm: (a) => a.method !== 'GET' && ALLOW_WRITES,
+    preview: async (a) => {
+      canvas.check(a.method, a.path, a.params);
+      return { action: `${a.method} ${a.path}`, method: a.method, path: a.path, params: a.params, body: a.body };
+    },
     schema: {
       method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).describe('HTTP method'),
       path: z.string().describe("API path after /api/v1, e.g. '/users/self/enrollments'"),
@@ -16,15 +21,11 @@ export default function register(ctx) {
       body: z.record(z.string(), z.any()).optional().describe('JSON body for POST/PUT'),
       paginate: z.boolean().optional().describe('Follow Link headers and collect all pages (GET only)'),
       max_items: z.number().int().positive().optional(),
-      confirm: z.boolean().optional().describe('Required for POST/PUT/DELETE'),
     },
     handler: async (a) => {
       const m = a.method.toUpperCase();
       canvas.check(m, a.path, a.params);
-      if (m !== 'GET') {
-        if (!ALLOW_WRITES) return fail('Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
-        if (a.confirm !== true) return ok({ method: m, path: a.path, params: a.params, body: a.body }, 'DRY RUN. Nothing was sent. Re-call with confirm=true to execute this write.');
-      }
+      if (m !== 'GET' && !ALLOW_WRITES) return fail('Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
       if (m === 'GET') {
         const data = a.paginate ? await canvas.paginate(a.path, a.params, { max: a.max_items || 200, ttl: 0 }) : await canvas.get(a.path, a.params, { ttl: 0 });
         return ok(data);
@@ -82,7 +83,7 @@ export default function register(ctx) {
       writes_enabled: ALLOW_WRITES, profile: PROFILE,
       tool_filter: cfg.tools ? [...cfg.tools] : 'all groups', tools_left_out: cfg.disabled.size ? [...cfg.disabled] : undefined,
       unknown_tool_names: unknownNames().length ? unknownNames() : undefined,
-      confirmations: elicitation ? 'asked in the app when it supports it, otherwise confirm=true after a dry run' : 'confirm=true after a dry run',
+      confirmations: elicitation ? 'asked in the app when it supports it, otherwise a preview and a one-time token' : 'a preview and a one-time token',
       cache_ttl_seconds: CACHE_TTL / 1000, timezone: TZ, download_dir: DOWNLOAD_DIR,
       remembers_between_runs: state.file || 'nothing (no state folder)',
       max_response_chars: cfg.maxChars,

@@ -1,10 +1,8 @@
 // Submissions. Registered by core/index.js; ctx carries the shared client, helpers and config.
-import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, assertNotPrivate, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
+  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
 
   const D = 'submissions';
 
@@ -65,14 +63,10 @@ export default function register(ctx) {
     }
     return ok({ uploaded: { id: file.id, filename: file.filename, size: file.size }, submission: pick(r, SUB_FIELDS) }, 'Submitted.');
   };
-  submitFile.preview = async (a) => {
-    const abs = path.resolve(a.file_path);
-    assertNotPrivate(abs);
-    return { ...(await assignmentPreview(a)), submission_type: 'online_upload', file_path: abs, file_exists: fs.existsSync(abs), file_size_bytes: fs.existsSync(abs) ? fs.statSync(abs).size : null };
-  };
+  submitFile.preview = async (a) => ({ ...filePreview(a.file_path), ...(await assignmentPreview(a)), submission_type: 'online_upload' });
   tool({ name: 'submit_assignment_file', group: D, write: true, confirm: true, description: 'Upload a local file and submit it to an assignment.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string().describe('Absolute path to the local file'), comment: z.string().optional() }, handler: submitFile });
 
-  tool({ name: 'upload_submission_file', group: D, write: true, description: 'Upload a file into an assignment submission slot WITHOUT submitting. Returns a file_id you can submit later.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string() }, handler: async (a) => ok(pick(await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/files`, a.file_path), ['id', 'filename', 'size', 'content-type', 'url'])) });
+  tool({ name: 'upload_submission_file', group: D, write: true, confirm: true, preview: async (a) => ({ action: 'UPLOAD this file to Canvas, without submitting it', ...filePreview(a.file_path) }), description: 'Upload a file into an assignment submission slot WITHOUT submitting. Returns a file_id you can submit later.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string() }, handler: async (a) => ok(pick(await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/files`, a.file_path), ['id', 'filename', 'size', 'content-type', 'url'])) });
 
   const postComment = async (a) => {
     assertClean(a.comment, 'comment');
@@ -82,7 +76,7 @@ export default function register(ctx) {
   postComment.preview = async (a) => ({ ...(await assignmentPreview(a)), action: 'post comment visible to instructor', comment: a.comment, attached_file_ids: a.file_ids });
   tool({ name: 'post_submission_comment', group: D, write: true, confirm: true, description: 'Post a comment on your own submission. Your instructor sees this.', schema: { course_id: COURSE, assignment_id: ID, comment: z.string(), file_ids: z.array(z.string()).optional() }, handler: postComment });
 
-  tool({ name: 'upload_comment_attachment', group: D, write: true, description: 'Upload a file to attach to a submission comment.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string() }, handler: async (a) => ok(pick(await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/comments/files`, a.file_path), ['id', 'filename', 'size', 'url'])) });
+  tool({ name: 'upload_comment_attachment', group: D, write: true, confirm: true, preview: async (a) => ({ action: 'UPLOAD this file to attach to a submission comment', ...filePreview(a.file_path) }), description: 'Upload a file to attach to a submission comment.', schema: { course_id: COURSE, assignment_id: ID, file_path: z.string() }, handler: async (a) => ok(pick(await uploadFile(`/courses/${a.course_id}/assignments/${a.assignment_id}/submissions/self/comments/files`, a.file_path), ['id', 'filename', 'size', 'url'])) });
 
   tool({
     name: 'download_submission_attachment', group: D, local: true,

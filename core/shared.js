@@ -1,4 +1,5 @@
 // Helpers and field lists used by more than one tool group: uploads, downloads and common Canvas fields.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -105,11 +106,24 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
     return target;
   }
 
-  /** Canvas file upload is a 3-step handshake: request slot -> POST to storage -> confirm. */
-  async function uploadFile(endpoint, filePath, extra = {}) {
+  /** A local file that may leave this computer, or a readable refusal. */
+  function uploadable(filePath) {
     const abs = path.resolve(filePath);
     if (!fs.existsSync(abs)) throw new CanvasError(`File not found on the computer running this server (${os.hostname()}): ${abs}`);
     assertNotPrivate(abs);
+    return abs;
+  }
+
+  /** What a person should see before a local file leaves this computer. The hash ties a confirmation to these exact bytes. */
+  function filePreview(filePath) {
+    const abs = uploadable(filePath);
+    const bytes = fs.readFileSync(abs);
+    return { file_path: abs, file_size_bytes: bytes.length, file_sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+  }
+
+  /** Canvas file upload is a 3-step handshake: request slot -> POST to storage -> confirm. */
+  async function uploadFile(endpoint, filePath, extra = {}) {
+    const abs = uploadable(filePath);
     const stat = fs.statSync(abs);
     const name = path.basename(abs);
     // Says which step failed and on which host, never the full address: upload URLs carry signed parameters.
@@ -193,5 +207,5 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
   /** A link to a folder of saved files, where the app can open folders (same computer only); otherwise null. */
   const folderLink = (dir, name) => (fileLink.folders ? { type: 'resource_link', uri: pathToFileURL(dir).href, name, description: 'Folder on this computer' } : null);
 
-  return { uploadFile, assertNotPrivate, assignmentPreview, activeCourses, fetchFile, saveDownload, downloadFolder, folderLink };
+  return { uploadFile, filePreview, assignmentPreview, activeCourses, fetchFile, saveDownload, downloadFolder, folderLink };
 }

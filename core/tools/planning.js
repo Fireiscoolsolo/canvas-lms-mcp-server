@@ -265,7 +265,8 @@ export default function register(ctx) {
   });
 
   tool({
-    name: 'export_course_archive', group: N, write: true,
+    name: 'export_course_archive', group: N, write: true, confirm: true,
+    preview: async (a) => ({ action: 'Ask Canvas to package this course, then download the archive', course_id: a.course_id, save_in: downloadFolder(a.dest_dir) }),
     description: 'Trigger a full course export, poll until Canvas finishes packaging it, then download the .imscc archive locally. Use before a term ends and access disappears. Can take several minutes.',
     schema: { course_id: COURSE, dest_dir: z.string().optional(), timeout_seconds: z.number().int().positive().optional().describe('Default 300') },
     handler: async (a, { progress }) => {

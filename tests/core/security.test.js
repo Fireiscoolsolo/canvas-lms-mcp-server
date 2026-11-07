@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { connect, sampleArgs, BASE } from './fake-canvas.js';
+import { connect, confirmed, tokenIn, sampleArgs, BASE } from './fake-canvas.js';
 
 const CANVAS_HOST = new URL(BASE).host;
 const text = (r) => (r.content || []).map((c) => c.text || '').join('\n');
@@ -121,7 +121,7 @@ test('the upload confirm step never sends the token off Canvas, and follows a Ca
     try {
       const file = path.join(dir, 'notes.txt');
       fs.writeFileSync(file, 'hi');
-      const r = await client.callTool({ name: 'upload_to_my_files', arguments: { file_path: file, confirm: true } });
+      const r = await confirmed(client, 'upload_to_my_files', { file_path: file });
       assert.deepEqual(withToken(offCanvas(calls)), [], 'no token off Canvas');
       assert.equal(calls.some((c) => c.url.startsWith('https://evil.example')), false, 'nothing goes to the other host');
       if (works) assert.ok(!r.isError, text(r));
@@ -465,6 +465,230 @@ test('a file in a download folder inside the settings folder can still be upload
     assert.doesNotMatch(text(fine), /Refused/);
     const refused = await client.callTool({ name: 'upload_to_my_files', arguments: { file_path: settings, confirm: true } });
     assert.match(text(refused), /Refused/);
+  } finally {
+    await close();
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Confirmation. The model can set any argument, so nothing it sends may stand in for a person saying yes.
+// ---------------------------------------------------------------------------------------------------------------
+
+const MESSAGE = { recipients: ['5'], subject: 'Lab 4', body: 'Could I have an extension?' };
+const sent = (calls, p = '/conversations') => calls.filter((c) => c.method === 'POST' && c.path === p).length;
+
+test('confirm=true never skips the question when the app can ask', async () => {
+  for (const [answer, expected] of [[{ action: 'decline' }, 0], [{ action: 'accept', content: { confirm: true } }, 1]]) {
+    const calls = [];
+    let asked = 0;
+    const { client, close } = await connect({ calls, clientCapabilities: { elicitation: {} }, onElicit: () => { asked++; return answer; } });
+    try {
+      await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true } });
+      assert.equal(asked, 1, 'the person was asked');
+      assert.equal(sent(calls), expected);
+    } finally {
+      await close();
+    }
+  }
+});
+
+test('a made-up token does not skip the question either', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls, clientCapabilities: { elicitation: {} }, onElicit: () => ({ action: 'decline' }) });
+  try {
+    await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: 'made-up' } });
+    assert.equal(sent(calls), 0);
+  } finally {
+    await close();
+  }
+});
+
+test('confirm=true alone does nothing when the app cannot ask', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    const r = await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true } });
+    assert.match(text(r), /DRY RUN/);
+    assert.ok(tokenIn(r), 'the preview hands back a token');
+    assert.equal(sent(calls), 0);
+  } finally {
+    await close();
+  }
+});
+
+test('a token works once, for that exact request', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    const token = tokenIn(await client.callTool({ name: 'send_message', arguments: MESSAGE }));
+    const swapped = await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, body: 'Something else', confirm: true, confirm_token: token } });
+    assert.equal(sent(calls), 0, 'a changed message is not sent');
+    assert.match(text(swapped), /nothing was sent/i);
+    const otherTool = await client.callTool({ name: 'reply_to_conversation', arguments: { conversation_id: '1', body: 'x', confirm: true, confirm_token: token } });
+    assert.equal(sent(calls, '/conversations/1/add_message'), 0, 'it does not work on another tool');
+    assert.match(text(otherTool), /nothing was sent/i);
+    const wrong = await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: 'x'.repeat(22) } });
+    assert.equal(sent(calls), 0, 'a wrong token does nothing');
+    assert.match(text(wrong), /nothing was sent/i);
+    await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: token } });
+    assert.equal(sent(calls), 0, 'a newer preview replaces the older token');
+    const latest = tokenIn(await client.callTool({ name: 'send_message', arguments: MESSAGE }));
+    await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: latest } });
+    assert.equal(sent(calls), 1, 'the latest token works');
+    await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: latest } });
+    assert.equal(sent(calls), 1, 'and only once');
+  } finally {
+    await close();
+  }
+});
+
+test('a token expires after five minutes', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  const realNow = Date.now;
+  try {
+    const token = tokenIn(await client.callTool({ name: 'send_message', arguments: MESSAGE }));
+    Date.now = () => realNow() + 5 * 60000 + 1000;
+    await client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: token } });
+    assert.equal(sent(calls), 0);
+  } finally {
+    Date.now = realNow;
+    await close();
+  }
+});
+
+test('two requests racing with one token send one message', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    const token = tokenIn(await client.callTool({ name: 'send_message', arguments: MESSAGE }));
+    const go = () => client.callTool({ name: 'send_message', arguments: { ...MESSAGE, confirm: true, confirm_token: token } });
+    await Promise.all([go(), go(), go()]);
+    assert.equal(sent(calls), 1);
+  } finally {
+    await close();
+  }
+});
+
+test('a submission is refused if the assignment changed after the preview', async () => {
+  const args = { course_id: '1', assignment_id: '1', body: '<p>My essay</p>' };
+  for (const change of [{ attempt: 1, submitted_at: '2026-11-01T00:00:00Z' }, { due_at: '2026-12-01T00:00:00Z' }]) {
+    const calls = [];
+    let state = { attempt: 0, submitted_at: null, due_at: '2026-11-20T00:00:00Z' };
+    const override = (method, p) => (method === 'GET' && p === '/courses/1/assignments/1'
+      ? { body: { id: '1', name: 'Essay', due_at: state.due_at, points_possible: 10, submission_types: ['online_text_entry'], submission: { attempt: state.attempt, submitted_at: state.submitted_at } } } : null);
+    const { client, close } = await connect({ calls, override });
+    try {
+      const token = tokenIn(await client.callTool({ name: 'submit_assignment_text', arguments: args }));
+      state = { ...state, ...change };
+      const r = await client.callTool({ name: 'submit_assignment_text', arguments: { ...args, confirm: true, confirm_token: token } });
+      assert.equal(sent(calls, '/courses/1/assignments/1/submissions'), 0, `must not submit after ${JSON.stringify(change)}`);
+      assert.match(text(r), /changed/);
+      assert.ok(tokenIn(r), 'the new details come with a new token');
+    } finally {
+      await close();
+    }
+  }
+});
+
+test('a file submission is refused if the file changed after the preview, even at the same size', async () => {
+  const calls = [];
+  const { client, dir, close } = await connect({ calls, override: uploadHandshake });
+  try {
+    const file = path.join(dir, 'essay.txt');
+    fs.writeFileSync(file, 'first draft');
+    const args = { course_id: '1', assignment_id: '1', file_path: file };
+    const token = tokenIn(await client.callTool({ name: 'submit_assignment_file', arguments: args }));
+    fs.writeFileSync(file, 'other draft');
+    const r = await client.callTool({ name: 'submit_assignment_file', arguments: { ...args, confirm: true, confirm_token: token } });
+    assert.equal(calls.filter((c) => c.method === 'POST').length, 0);
+    assert.match(text(r), /changed/);
+  } finally {
+    await close();
+  }
+});
+
+test('a delete is refused if what it would delete changed after the preview', async () => {
+  const cases = [
+    ['delete_my_file', { file_id: '7' }, '/files/7', 'updated_at'], ['delete_conversation', { conversation_id: '7' }, '/conversations/7', 'last_message_at'],
+    ['delete_calendar_event', { event_id: '7' }, '/calendar_events/7', 'updated_at'], ['delete_planner_note', { note_id: '7' }, '/planner_notes/7', 'updated_at'],
+  ];
+  for (const [name, args, target, field] of cases) {
+    const calls = [];
+    let stamp = '2026-11-01T00:00:00Z';
+    const { client, close } = await connect({ calls, override: (method, p) => (method === 'GET' && p === target ? { body: { id: '7', title: 'x', [field]: stamp } } : null) });
+    try {
+      const token = tokenIn(await client.callTool({ name, arguments: args }));
+      stamp = '2026-11-02T00:00:00Z';
+      await client.callTool({ name, arguments: { ...args, confirm: true, confirm_token: token } });
+      assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0, `${name} must not delete after a change`);
+    } finally {
+      await close();
+    }
+  }
+});
+
+test('raw_canvas_request writes need the same confirmation, and reads do not', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    const args = { method: 'PUT', path: '/users/self/settings', body: { a: 1 } };
+    const r = await client.callTool({ name: 'raw_canvas_request', arguments: { ...args, confirm: true } });
+    assert.match(text(r), /DRY RUN/);
+    assert.equal(calls.filter((c) => c.method === 'PUT').length, 0);
+    await client.callTool({ name: 'raw_canvas_request', arguments: { ...args, confirm: true, confirm_token: tokenIn(r) } });
+    assert.equal(calls.filter((c) => c.method === 'PUT').length, 1);
+    const read = await client.callTool({ name: 'raw_canvas_request', arguments: { method: 'GET', path: '/users/self' } });
+    assert.ok(!read.isError);
+    assert.doesNotMatch(text(read), /DRY RUN/);
+  } finally {
+    await close();
+  }
+});
+
+test('with writes off, raw_canvas_request refuses a write outright', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls, env: { CANVAS_ALLOW_WRITES: 'false' } });
+  try {
+    const r = await client.callTool({ name: 'raw_canvas_request', arguments: { method: 'POST', path: '/x', confirm: true } });
+    assert.equal(r.isError, true);
+    assert.deepEqual(calls, []);
+  } finally {
+    await close();
+  }
+});
+
+test('no confirm-gated tool changes anything on the model\'s word alone', { timeout: 120000 }, async () => {
+  const calls = [];
+  const { client, built, dir, close } = await connect({ calls });
+  try {
+    const { tools } = await client.listTools();
+    const gated = built.registry.filter((t) => t.confirm).map((t) => t.name);
+    assert.ok(gated.length >= 37, `expected at least 37 gated tools, got ${gated.length}`);
+    for (const name of ['upload_to_my_files', 'upload_submission_file', 'upload_comment_attachment', 'delete_planner_note', 'delete_bookmark', 'update_planner_note', 'update_calendar_event', 'rate_entry', 'export_course_archive', 'create_content_export', 'raw_canvas_request']) {
+      assert.ok(gated.includes(name), `${name} should need confirmation`);
+    }
+    for (const t of tools.filter((x) => gated.includes(x.name))) {
+      calls.length = 0;
+      const extra = t.name === 'raw_canvas_request' ? { method: 'POST' } : {};
+      await client.callTool({ name: t.name, arguments: { ...sampleArgs(t.inputSchema, dir), ...extra, confirm: true } });
+      assert.deepEqual(calls.filter((c) => c.method !== 'GET'), [], `${t.name} must not write without a token`);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('harmless writes stay one step', async () => {
+  const calls = [];
+  const { client, close } = await connect({ calls });
+  try {
+    for (const [name, args] of [['mark_announcement_read', { course_id: '1', announcement_id: '2' }], ['star_conversation', { conversation_id: '1' }], ['add_favorite_course', { course_id: '1' }], ['create_planner_note', { title: 'Read chapter 3', todo_date: '2026-11-20' }]]) {
+      calls.length = 0;
+      const r = await client.callTool({ name, arguments: args });
+      assert.doesNotMatch(text(r), /DRY RUN/, name);
+      assert.ok(calls.some((c) => c.method !== 'GET'), `${name} runs straight away`);
+    }
   } finally {
     await close();
   }

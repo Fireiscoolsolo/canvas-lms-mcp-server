@@ -8,7 +8,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createCanvasServer } from '../../core/index.js';
 
 export const BASE = 'https://canvas.example.edu';
-const soon = (h) => new Date(Date.now() + h * 3600000).toISOString();
+const STARTED = Date.now(); // fixed, so a record reads the same on every request, as it does in Canvas
+const soon = (h) => new Date(STARTED + h * 3600000).toISOString();
 
 /** One made-up record with the fields many endpoints share, so tools that read any of them find something. */
 export function sample(id = '1') {
@@ -71,6 +72,16 @@ export async function connect({ env = {}, calls = [], override, clientCapabiliti
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([built.server.connect(a), client.connect(b)]);
   return { client, built, calls, dir, close: async () => { await client.close(); fs.rmSync(dir, { recursive: true, force: true }); } };
+}
+
+/** The token a dry run hands back, for apps that can't ask the user themselves. */
+export const tokenIn = (result) => /confirm_token="([^"]+)"/.exec(result.content?.[0]?.text || '')?.[1];
+
+/** Run a confirm-gated tool the way an app without a dialog must: preview first, then confirm with the token. */
+export async function confirmed(client, name, args) {
+  const first = await client.callTool({ name, arguments: args });
+  const token = tokenIn(first);
+  return token ? client.callTool({ name, arguments: { ...args, confirm: true, confirm_token: token } }) : first;
 }
 
 /** Minimal valid arguments for a tool, from its JSON input schema: required fields only. */
