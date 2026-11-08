@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { totp, verifyTotp, base32Encode, base32Decode, otpauthUrl } from '../totp.js';
@@ -18,6 +19,12 @@ import { systemdUnit, launchdPlist } from '../service.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-remote-'));
+const freePort = () => new Promise((r) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => r(port)); }); });
+/** A reply as JSON, or a failure that says which request answered with what. */
+async function jsonOf(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { throw new Error(`${res.url} answered HTTP ${res.status}, not JSON: ${text.slice(0, 300)}`); }
+}
 
 test('two-factor codes match the RFC 6238 test vector', () => {
   const secret = base32Encode(Buffer.from('12345678901234567890'));
@@ -240,7 +247,7 @@ test('startup service files run the supervisor with a rotating log', () => {
 
 test('HTTP with sign-in on: status page, cluster heartbeats and a health check that says nothing private', { timeout: 30000 }, async () => {
   const dir = tmp();
-  const port = 39411;
+  const port = await freePort();
   const child = spawn(process.execPath, [path.join(ROOT, 'index.js')], {
     cwd: dir,
     env: { ...process.env, CANVAS_API_TOKEN: 'test-token', CANVAS_BASE_URL: 'https://canvas.example.edu', CANVAS_MCP_PORT: String(port), CANVAS_MCP_TRANSPORT: 'http', CANVAS_MCP_PUBLIC_URL: 'https://demo.example.dev', CANVAS_MCP_PASSWORD: 'a-long-test-password', CANVAS_MCP_CLUSTER_SECRET: 'cluster-secret-123', CANVAS_ALERTS_NTFY_TOPIC: '' },
@@ -255,21 +262,21 @@ test('HTTP with sign-in on: status page, cluster heartbeats and a health check t
       child.on('exit', (code) => reject(new Error(`server exited early (code ${code}): ${errText}`)));
     });
     const h = { Host: 'demo.example.dev' };
-    const health = await (await fetch(`http://127.0.0.1:${port}/healthz`, { headers: h })).json();
+    const health = await jsonOf(await fetch(`http://127.0.0.1:${port}/healthz`, { headers: h }));
     assert.deepEqual(Object.keys(health).sort(), ['auth_enabled', 'ok', 'tools', 'version']);
     assert.equal(health.auth_enabled, true);
     assert.match(await (await fetch(`http://127.0.0.1:${port}/status`, { headers: h })).text(), /Enter your server password/);
     assert.equal((await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: h })).status, 403);
     const secret = { ...h, 'X-Cluster-Secret': 'cluster-secret-123', 'Content-Type': 'application/json' };
     await fetch(`http://127.0.0.1:${port}/internal/heartbeat`, { method: 'POST', headers: secret, body: JSON.stringify({ hostname: 'laptop-2', state: 'standby', version: '1.3.0' }) });
-    const { members } = await (await fetch(`http://127.0.0.1:${port}/internal/cluster`, { headers: secret })).json();
+    const { members } = await jsonOf(await fetch(`http://127.0.0.1:${port}/internal/cluster`, { headers: secret }));
     assert.deepEqual(members.map((m) => m.state), ['active', 'standby']);
     assert.equal(members[1].hostname, 'laptop-2');
-    const status = await (await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: secret })).json();
+    const status = await jsonOf(await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: secret }));
     assert.equal(status.tools, 237);
     assert.deepEqual(status.sessions, []);
     assert.ok(!JSON.stringify(status).includes('a-long-test-password') && !JSON.stringify(status).includes('test-token'));
-    const meta = await (await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`, { headers: h })).json();
+    const meta = await jsonOf(await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`, { headers: h }));
     assert.equal(meta.issuer, 'https://demo.example.dev/');
   } finally {
     const exited = new Promise((r) => child.once('exit', r));
