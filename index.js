@@ -21,7 +21,6 @@
  *   CANVAS_MCP_CLUSTER_SECRET optional  Shared secret protecting the /internal/* endpoints used by
  *                                  supervisor.js for active/standby handoff between two machines
  *                                  running this same server. Must be identical on both machines.
- *                                  No effect unless CANVAS_MCP_PUBLIC_URL is also set.
  *   CANVAS_MCP_TRUST_PROXY optional Which proxies to trust for the visitor's address (rate limits).
  *                                  Default: loopback. Docker setups use "uniquelocal".
  *   CANVAS_MCP_TRANSPORT optional  "stdio" (or the --stdio flag) serves over stdin/stdout instead of
@@ -39,7 +38,7 @@
 
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import { hostHeaderValidation, localhostHostValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import express from 'express';
@@ -54,6 +53,10 @@ import { createOAuthProvider } from './oauth-provider.js';
 import { startAlerts, alertSettings, describeAlerts } from './alerts.js';
 import { createFileShare } from './file-share.js';
 import { createStatusRouter } from './status-page.js';
+import { startupProblems } from './startup-check.js';
+
+// The MCP SDK's HTTP transport uses the global crypto, which Node 18 only has behind a flag.
+if (!globalThis.crypto) globalThis.crypto = crypto.webcrypto;
 
 dotenv.config({ quiet: true });
 
@@ -110,11 +113,46 @@ const humanDuration = (ms) => {
   return `${Math.floor(h / 24)} days`;
 };
 
+// The largest MCP request accepted, the same as the MCP SDK's own limit when it reads a request itself. A long essay
+// for submit_assignment_text is well over the 100 KB Express allows by default.
+const MCP_BODY_LIMIT = '4mb';
+
+/**
+ * The SDK's createMcpExpressApp with one change: /mcp takes requests up to MCP_BODY_LIMIT, and a request that is too
+ * big or isn't JSON gets a JSON-RPC error instead of Express's HTML error page.
+ */
+function createApp({ host, allowedHosts }) {
+  const app = express();
+  if (allowedHosts) app.use(hostHeaderValidation(allowedHosts));
+  else if (['127.0.0.1', 'localhost', '::1'].includes(host)) app.use(localhostHostValidation());
+  // The body is read after the Host check, so a request for the wrong host is refused without reading it.
+  app.use('/mcp', express.json({ limit: MCP_BODY_LIMIT }));
+  app.use(express.json());
+  app.use((err, req, res, next) => {
+    if (!err || !(err.type === 'entity.too.large' || err.type === 'entity.parse.failed')) return next(err);
+    const tooBig = err.type === 'entity.too.large';
+    const message = tooBig
+      ? `This request is bigger than the ${MCP_BODY_LIMIT.toUpperCase().replace('MB', ' MB')} this server accepts. Send less at once, for example a file through submit_assignment_file instead of pasting it.`
+      : 'This request is not valid JSON.';
+    res.status(tooBig ? 413 : 400).json(req.path.startsWith('/mcp')
+      ? { jsonrpc: '2.0', id: null, error: { code: tooBig ? -32600 : -32700, message } }
+      : { error: tooBig ? 'too_large' : 'invalid_json', message });
+  });
+  return app;
+}
+
 function readSupervisorState() {
   try { return JSON.parse(fs.readFileSync(path.join(DIR, 'supervisor-state.json'), 'utf8')); } catch { return null; }
 }
 
 async function main() {
+  if (!STDIO) {
+    const { errors, warnings } = startupProblems(process.env);
+    for (const w of warnings) log(`WARNING: ${w}`);
+    for (const e of errors) log(`Can't start: ${e.message}`);
+    if (errors.length) { process.exitCode = 1; return; }
+  }
+
   built.start();
 
   // stdio mode: lets directories and sandboxes that only speak stdio (for
@@ -126,30 +164,24 @@ async function main() {
     return;
   }
 
-  // Stateless Streamable HTTP: the 200+ tools above are registered once on
-  // the single shared `server`, but the SDK requires a FRESH transport per
-  // request in stateless mode (reusing one throws after its first request:
-  // "Stateless transport cannot be reused across requests"). Since a Server
-  // can only be connect()ed to one transport at a time, requests are run
-  // through a serial queue (mirrors the CanvasClient.enqueue pattern)
-  // so concurrent MCP clients (Desktop can spawn several bridge processes at
-  // once) never race to connect() while another request is still attached.
-  let mcpQueue = Promise.resolve();
-  function queueMcp(req, res) {
-    const run = mcpQueue.then(() => processMcp(req, res), () => processMcp(req, res));
-    mcpQueue = run.then(() => undefined, () => undefined);
-    return run;
-  }
+  // Stateless Streamable HTTP: the SDK needs a fresh transport for every
+  // request, and a server can only be connected to one transport at a time.
+  // So every request gets its own server, with the same tools registered on
+  // it (newServer() in core/index.js). They share one Canvas client, cache,
+  // confirmation tokens and state, and Canvas calls still go out one at a
+  // time, but a slow tool on one device never holds up a request from
+  // another. When the app stops waiting, its server closes, and a tool that
+  // only reads stops before its next Canvas request.
   async function processMcp(req, res) {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const one = built.newServer();
+    res.on('close', () => { one.close().catch(() => {}); });
     try {
-      await server.connect(transport);
+      await one.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (e) {
       log(`mcp request failed: ${e.stack || e.message}`);
       if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal server error' } });
-    } finally {
-      await server.close().catch(() => {});
     }
   }
 
@@ -157,7 +189,7 @@ async function main() {
   // hostname, not 127.0.0.1 — the default DNS-rebinding check would reject it.
   // Allow that hostname explicitly instead of disabling the check.
   const allowedHosts = AUTH_ENABLED ? [new URL(PUBLIC_URL).hostname, 'localhost', '127.0.0.1'] : undefined;
-  const app = createMcpExpressApp({ host: HOST, allowedHosts });
+  const app = createApp({ host: HOST, allowedHosts });
   // The tunnel forwards from a proxy and sets X-Forwarded-For to the real
   // visitor IP; trust it (loopback only by default) so rate limiting below
   // keys on the actual client, not the tunnel's local forwarding address.
@@ -195,8 +227,8 @@ async function main() {
   }
 
   if (AUTH_ENABLED) {
-    auth = createOAuthProvider({ password: MCP_PASSWORD, storePath: OAUTH_STORE_PATH, historyPath: path.join(DIR, 'login-history.json'), totpSecret: TOTP_SECRET, onLogin: securityAlert });
     const resourceUrl = new URL(`${PUBLIC_URL}/mcp`);
+    auth = createOAuthProvider({ password: MCP_PASSWORD, storePath: OAUTH_STORE_PATH, historyPath: path.join(DIR, 'login-history.json'), totpSecret: TOTP_SECRET, resourceUrl: resourceUrl.href, onLogin: securityAlert });
     app.use(mcpAuthRouter({
       provider: auth.provider,
       issuerUrl: new URL(PUBLIC_URL),
@@ -219,7 +251,7 @@ async function main() {
       if (!t) return '';
       try { return new Date(t).toLocaleString('en-US', { timeZone: cfg.tz, dateStyle: 'medium', timeStyle: 'short' }); } catch { return new Date(t).toISOString(); }
     };
-    app.use('/status', createStatusRouter({ password: MCP_PASSWORD, totpSecret: TOTP_SECRET, getStatus: statusData, revokeClient: (id) => auth.revokeClient(id), limiter: loginLimiter, fmt }));
+    app.use('/status', createStatusRouter({ password: MCP_PASSWORD, totpSecret: TOTP_SECRET, getStatus: statusData, revokeClient: (id) => auth.revokeClient(id), checkPassword: auth.passwordAttempt, limiter: loginLimiter, fmt }));
     app.get('/files/:key/:name', files.handler);
     mcpAuthMiddleware = requireBearerAuth({ verifier: auth.provider, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl) });
     // Tidy sign-ins at start and once a day: expired tokens, apps that never finished signing in, unused apps.
@@ -239,7 +271,10 @@ async function main() {
   // OAuth — they're machine-to-machine, gated by a separate shared secret,
   // since the standby instance calls them before it has any OAuth token.
   // The setup app and the command line use them too, for status and sessions.
+  // Wrong guesses get locked out. Right answers don't count, so heartbeats never trip it.
   // ---------------------------------------------------------------------
+  app.use('/internal', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false, message: { error: 'too_many_attempts' } }));
+
   function requireClusterSecret(req, res, next) {
     const provided = Buffer.from(String(req.headers['x-cluster-secret'] || ''));
     const expected = Buffer.from(CLUSTER_SECRET);
@@ -249,8 +284,11 @@ async function main() {
     next();
   }
 
+  // Who is answering the public address. A computer that is serving asks this through the public address too: when
+  // another computer answers, both are serving, and active_since says which one took over more recently.
   app.get('/internal/whoami', requireClusterSecret, (_req, res) => {
-    res.json({ hostname: os.hostname(), pid: process.pid, startedAt: START_TIME, version: VERSION });
+    const sup = readSupervisorState();
+    res.json({ hostname: os.hostname(), pid: process.pid, startedAt: START_TIME, active_since: sup?.state === 'active' ? sup.since : null, version: VERSION });
   });
 
   app.post('/internal/heartbeat', requireClusterSecret, (req, res) => {
@@ -279,7 +317,14 @@ async function main() {
     }
   });
 
-  app.post('/internal/step-down', requireClusterSecret, (_req, res) => {
+  // A request can name the computer it is meant for. When two computers share the public address it can land on
+  // either one, so the other refuses it. One that names nobody (takeover, older versions) steps down whoever gets it.
+  app.post('/internal/step-down', requireClusterSecret, (req, res) => {
+    const { hostname, pid } = req.body || {};
+    if (hostname !== undefined && (String(hostname) !== os.hostname() || Number(pid) !== process.pid)) {
+      res.status(409).json({ error: 'not_me', hostname: os.hostname(), pid: process.pid });
+      return;
+    }
     log('received step-down request; exiting for handoff');
     res.json({ ok: true });
     setTimeout(() => process.exit(42), 200);
@@ -287,17 +332,22 @@ async function main() {
 
   // GET opens a standalone, long-lived SSE stream for server-initiated push
   // notifications (spec-optional). This server never pushes anything to the
-  // client, and routing a request that's designed to stay open forever
-  // through the serial queue above would permanently block every POST
-  // queued behind it. Reject it fast instead of letting it hang.
+  // client, and a request designed to stay open forever would hold a server
+  // open for nothing. Reject it fast instead of letting it hang.
   app.get('/mcp', (_req, res) => {
     res.set('Allow', 'POST, DELETE');
     res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method Not Allowed: server-initiated streams are not supported' } });
   });
-  app.post('/mcp', mcpAuthMiddleware, queueMcp);
-  app.delete('/mcp', mcpAuthMiddleware, queueMcp);
+  app.post('/mcp', mcpAuthMiddleware, processMcp);
+  app.delete('/mcp', mcpAuthMiddleware, processMcp);
   // Public, so the setup app and uptime checkers can see the server is up. It says nothing about your account.
-  app.get('/healthz', (_req, res) => res.json({ ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }));
+  // Anyone can call this, so through the tunnel it only says the server is up. The version and whether sign-in is on
+  // are for doctor and status on this computer: a loopback connection that no proxy forwarded.
+  const fromThisComputer = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded;
+  app.get('/healthz', (req, res) => res.json(fromThisComputer(req)
+    ? { ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }
+    : { ok: true, tools: registry.length }));
 
   app.listen(PORT, HOST, () => {
     log(`ready on http://${HOST}:${PORT}/mcp`);

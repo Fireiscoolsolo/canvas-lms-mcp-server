@@ -3,7 +3,7 @@ import { matchToken } from '../token-watch.js';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty } = ctx;
+  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty, STREAM_FIELDS } = ctx;
 
   const A = 'identity';
 
@@ -55,7 +55,7 @@ export default function register(ctx) {
   });
 
   get({ name: 'list_my_enrollments', group: A, description: 'All enrollments for the current user across courses, including role, section, and grade summary.', path: '/users/self/enrollments', params: (a) => ({ state: a.state || ['active', 'invited'], type: a.type }), schema: { state: z.array(z.string()).optional().describe('active, invited, completed, inactive'), type: z.array(z.string()).optional(), limit: LIMIT }, paginate: true });
-  get({ name: 'get_activity_stream', group: A, description: 'Recent activity across all courses: new announcements, discussion replies, grade changes, messages.', path: '/users/self/activity_stream', schema: { limit: LIMIT, only_active_courses: z.boolean().optional() }, params: (a) => ({ only_active_courses: a.only_active_courses ?? true }), paginate: true, max: 50, fenceFields: ['message', 'title'] });
+  get({ name: 'get_activity_stream', group: A, description: 'Recent activity across all courses: new announcements, discussion replies, grade changes, messages.', path: '/users/self/activity_stream', schema: { limit: LIMIT, only_active_courses: z.boolean().optional() }, params: (a) => ({ only_active_courses: a.only_active_courses ?? true }), paginate: true, max: 50, fields: STREAM_FIELDS, fenceFields: ['message', 'title'] });
   get({ name: 'get_activity_stream_summary', group: A, description: 'Counts of unread items by type. Very cheap. Use before pulling the full stream.', path: '/users/self/activity_stream/summary' });
   get({ name: 'list_todo', group: A, description: "Canvas's own TODO list for the current user: assignments needing submission and items needing grading.", path: '/users/self/todo', paginate: true, max: 100 });
   get({ name: 'get_todo_count', group: A, description: 'Count of TODO items without fetching them. Cheap.', path: '/users/self/todo_item_count' });
@@ -72,7 +72,7 @@ export default function register(ctx) {
   tool({ name: 'set_custom_data', group: A, write: true, description: 'Write arbitrary key-value data to your Canvas account custom-data store.', schema: { data: z.record(z.string(), z.any()).describe('Object to store'), namespace: z.string().optional(), scope: z.string().optional() }, handler: async (a) => ok(await canvas.put(`/users/self/custom_data${a.scope ? '/' + a.scope : ''}`, { ns: a.namespace || 'canvas-mcp', data: a.data })) });
   get({ name: 'list_bookmarks', group: A, description: 'Your saved Canvas bookmarks.', path: '/users/self/bookmarks', paginate: true });
   tool({ name: 'create_bookmark', group: A, write: true, description: 'Save a Canvas bookmark pointing at a course URL.', schema: { name: z.string(), url: z.string().describe('Canvas-relative URL, e.g. /courses/123/assignments/456'), position: z.number().int().optional() }, handler: async (a) => ok(await canvas.post('/users/self/bookmarks', { name: a.name, url: a.url, position: a.position })) });
-  tool({ name: 'delete_bookmark', group: A, write: true, description: 'Delete a saved Canvas bookmark.', schema: { bookmark_id: ID }, handler: async (a) => ok(await canvas.del(`/users/self/bookmarks/${a.bookmark_id}`)) });
+  tool({ name: 'delete_bookmark', group: A, write: true, confirm: true, preview: async (a) => { const b = await canvas.get(`/users/self/bookmarks/${a.bookmark_id}`); return { action: 'DELETE this bookmark', name: b.name, url: b.url }; }, description: 'Delete a saved Canvas bookmark.', schema: { bookmark_id: ID }, handler: async (a) => ok(await canvas.del(`/users/self/bookmarks/${a.bookmark_id}`)) });
   get({ name: 'list_my_observees', group: A, description: 'Users you observe (linked students). Mostly relevant for parent/observer accounts.', path: '/users/self/observees', paginate: true });
 
   get({ name: 'list_notification_categories', group: A, description: 'The notification categories on one delivery channel (email, phone) and how often Canvas currently notifies you about each, e.g. due dates, grading, announcements. Use with update_notification_preference.', path: (a) => `/users/self/communication_channels/${a.channel_id}/notification_preference_categories`, schema: { channel_id: ID } });

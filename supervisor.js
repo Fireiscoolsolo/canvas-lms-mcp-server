@@ -29,6 +29,11 @@
  *   - Safety net: if two machines somehow try to become active at once,
  *     ngrok only lets one claim the static domain. The loser detects that
  *     (via ngrok's local inspection API) and falls back to standby.
+ *     Cloudflare Tunnel has no such claim: it runs both connectors and splits
+ *     requests between them. So while active, each computer also asks the
+ *     public URL who answers (/internal/whoami). If another computer does,
+ *     both are serving, and the one that became active more recently steps
+ *     back (or is asked to, when the other's checks only ever reach it).
  *
  * Requests from the command line arrive as small files in the settings
  * folder: stop.flag (shut down cleanly; `canvas-lms-mcp-remote stop`) and
@@ -53,6 +58,8 @@ import { createRotatingLog } from './log-file.js';
 import { redact } from './core/text.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings } from './core/network.js';
+import { startupProblems } from './startup-check.js';
+import { saveStoreCopy } from './oauth-provider.js';
 
 dotenv.config({ quiet: true });
 applyNetworkSettings({ ipFamily: ipFamilyFrom() });
@@ -112,14 +119,17 @@ function pipeLines(stream) {
 let serverChild = null;
 let tunnelChild = null;
 let state = 'starting';
+let stateSince = Date.now();
+let activeRun = 0; // which stretch of being active the split-brain check belongs to
 
 const log = (...a) => writeOut(`[supervisor ${new Date().toISOString()}] ${a.join(' ')}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setState(next) {
   state = next;
+  stateSince = Date.now();
   try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ state, since: new Date().toISOString(), hostname: os.hostname(), pid: process.pid, tunnel: TUNNEL, public_url: PUBLIC_URL, version: VERSION, log_file: logFile?.file || null }, null, 2));
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ state, since: new Date(stateSince).toISOString(), hostname: os.hostname(), pid: process.pid, tunnel: TUNNEL, public_url: PUBLIC_URL, version: VERSION, log_file: logFile?.file || null }, null, 2));
   } catch { /* read-only folder */ }
 }
 
@@ -131,6 +141,12 @@ if (TUNNEL === 'cloudflared' && !CLOUDFLARED_TOKEN) {
   log('CANVAS_MCP_TUNNEL=cloudflared needs CANVAS_MCP_CLOUDFLARED_TOKEN (the tunnel token from the Cloudflare dashboard)');
   process.exit(1);
 }
+
+// The same check the server makes, so a server that can't start isn't restarted every few seconds forever.
+const { errors: cannotStart, warnings: startupWarnings } = startupProblems(process.env);
+for (const w of startupWarnings) log(`WARNING: ${w}`);
+for (const e of cannotStart) log(`can't start: ${e.message}`);
+if (cannotStart.length) process.exitCode = 1;
 
 async function callInternal(pathname, { method = 'GET', body, timeoutMs = 6000 } = {}) {
   const controller = new AbortController();
@@ -204,11 +220,17 @@ function startServer() {
   });
 }
 
+/**
+ * The environment for the tunnel program: everything it might need (PATH, proxies, its own NGROK_ or TUNNEL_ settings)
+ * but none of this server's CANVAS_ settings, which hold the Canvas token, the password and the cluster secret.
+ */
+const tunnelEnv = (extra = {}) => ({ ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CANVAS_/i.test(k))), ...extra });
+
 function startTunnel() {
   if (TUNNEL === 'none') return;
   const [cmd, args, env, label] = TUNNEL === 'cloudflared'
-    ? [CLOUDFLARED, ['tunnel', '--no-autoupdate', '--metrics', `127.0.0.1:${METRICS_PORT}`, 'run'], { ...process.env, TUNNEL_TOKEN: CLOUDFLARED_TOKEN }, 'cloudflared']
-    : [NGROK, ['http', `--url=${PUBLIC_URL}`, String(PORT), '--log=stdout'], process.env, 'ngrok'];
+    ? [CLOUDFLARED, ['tunnel', '--no-autoupdate', '--metrics', `127.0.0.1:${METRICS_PORT}`, 'run'], tunnelEnv({ TUNNEL_TOKEN: CLOUDFLARED_TOKEN }), 'cloudflared']
+    : [NGROK, ['http', `--url=${PUBLIC_URL}`, String(PORT), '--log=stdout'], tunnelEnv(), 'ngrok'];
   const child = spawn(cmd, args, { cwd: DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });
   tunnelChild = child;
   pipeLines(child.stdout);
@@ -281,6 +303,36 @@ async function becomeActive() {
     return;
   }
   log(`active and serving at ${PUBLIC_URL}${TUNNEL === 'none' ? ' (no tunnel: the address is routed outside this program)' : ` through ${TUNNEL}`}`);
+  watchForAnotherActive(++activeRun);
+}
+
+/**
+ * While serving, ask the public address who answers it. Normally that's this computer. If another one answers, both
+ * are serving: apps fail at random and sign-ins split between two stores. The one that became active more recently
+ * steps back to standby. When this one is older, it asks the other to step down instead, naming it, because its own
+ * checks might be the only ones that reach the other computer.
+ */
+async function watchForAnotherActive(run) {
+  const mine = () => `${os.hostname()}:${serverChild?.pid}`;
+  while (state === 'active' && run === activeRun) {
+    await sleep(POLL_INTERVAL_MS);
+    if (state !== 'active' || run !== activeRun) return;
+    const who = await callInternal('/internal/whoami', { timeoutMs: 5000 });
+    const other = who.ok && who.data && typeof who.data === 'object' ? who.data : null;
+    if (!other || (other.hostname === os.hostname() && Number(other.pid) === serverChild?.pid)) continue;
+    const theirs = Date.parse(other.active_since || other.startedAt || '') || 0;
+    const theyAreNewer = theirs > stateSince || (theirs === stateSince && `${other.hostname}:${other.pid}` > mine());
+    if (theyAreNewer) {
+      log(`${other.hostname || 'another computer'} is also serving the public address and took over later; asking it to step down`);
+      await callInternal('/internal/step-down', { method: 'POST', body: { hostname: other.hostname, pid: other.pid } });
+    } else {
+      log(`${other.hostname || 'another computer'} is also serving the public address and has been serving longer; stepping back to standby`);
+      stopTunnel();
+      stopServer();
+      enterStandby();
+      return;
+    }
+  }
 }
 
 async function enterStandby() {
@@ -319,11 +371,10 @@ async function enterStandby() {
 
 async function syncHandoffData({ quiet = false } = {}) {
   const handoff = await callInternal('/internal/handoff');
-  if (handoff.ok && handoff.data && typeof handoff.data === 'object' && !Array.isArray(handoff.data)) {
-    fs.writeFileSync(OAUTH_STORE_PATH, JSON.stringify(handoff.data, null, 2));
+  if (handoff.ok && saveStoreCopy(OAUTH_STORE_PATH, handoff.data)) {
     if (!quiet) log('synced session data from the active instance');
   } else {
-    log(`could not sync session data (${handoff.error || handoff.status || 'malformed response'}) — using local data as-is`);
+    log(`could not sync session data (${handoff.error || handoff.status || 'it was not a complete sign-in store, or could not be saved'}) — using local data as-is`);
   }
 }
 
@@ -385,4 +436,4 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-main().catch((e) => { log(`fatal: ${e.stack || e.message}`); process.exit(1); });
+if (!cannotStart.length) main().catch((e) => { log(`fatal: ${e.stack || e.message}`); process.exit(1); });

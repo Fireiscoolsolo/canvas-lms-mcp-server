@@ -3,6 +3,7 @@
 #   2. docker compose up -d
 #   3. Connect your AI app to https://<your-domain>/mcp, exactly as in the README.
 # One container serves; there is no failover between computers in this setup (Docker restarts it if it stops).
+# The tunnel images are pinned to a version and its digest. To update one, pick a newer tag on Docker Hub and its digest.
 services:
   canvas:
     build: .
@@ -13,7 +14,7 @@ services:
       - canvas-data:/data
 
   ngrok:
-    image: ngrok/ngrok:latest
+    image: ngrok/ngrok:3.39.13-debian@sha256:ff3b5c3674432d14a786349908b7bdf28ee56c25662637afcbe7180d471993ef
     restart: unless-stopped
     command: ["http", "--url=${CANVAS_MCP_PUBLIC_URL}", "canvas:3939"]
     environment:
@@ -23,7 +24,7 @@ services:
   # Or use Cloudflare Tunnel instead of ngrok: delete the ngrok service above, uncomment this one, put
   # CANVAS_MCP_CLOUDFLARED_TOKEN in .env, and in the Cloudflare dashboard point your public hostname at http://canvas:3939
   # cloudflared:
-  #   image: cloudflare/cloudflared:latest
+  #   image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
   #   restart: unless-stopped
   #   command: tunnel --no-autoupdate run
   #   environment:

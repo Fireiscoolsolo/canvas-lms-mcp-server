@@ -67,6 +67,7 @@ async function internal(env, pathname, method = 'GET') {
   if (!base || !env.CANVAS_MCP_CLUSTER_SECRET) throw new Error('CANVAS_MCP_PUBLIC_URL and CANVAS_MCP_CLUSTER_SECRET must be set in .env.');
   const res = await fetch(`${base}${pathname}`, { method, headers: { 'X-Cluster-Secret': env.CANVAS_MCP_CLUSTER_SECRET, 'ngrok-skip-browser-warning': '1' }, signal: AbortSignal.timeout(15000) });
   if (res.status === 403) throw new Error('The server refused the cluster secret. CANVAS_MCP_CLUSTER_SECRET must match on every computer.');
+  if (res.status === 429) throw new Error('The server is locked for this address after too many wrong cluster secrets. Fix CANVAS_MCP_CLUSTER_SECRET, wait 15 minutes and try again.');
   if (!res.ok) throw new Error(`The server answered HTTP ${res.status}. Is it running? Try "canvas-lms-mcp-remote status".`);
   return res.json();
 }

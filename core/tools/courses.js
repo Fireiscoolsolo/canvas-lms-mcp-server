@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, fence, html2text, COURSE, LIMIT, COURSE_FIELDS, omitEmpty, friendly } = ctx;
+  const { tool, get, canvas, ok, fence, html2text, COURSE, LIMIT, COURSE_FIELDS, STREAM_FIELDS, omitEmpty, friendly } = ctx;
 
   const B = 'courses';
 
@@ -31,7 +31,7 @@ export default function register(ctx) {
   });
   get({ name: 'get_course_settings', group: B, description: 'Course-level settings (late policy visibility, syllabus public, hide final grades, grading standard toggles).', path: (a) => `/courses/${a.course_id}/settings`, schema: { course_id: COURSE } });
   get({ name: 'list_course_tabs', group: B, description: 'Which navigation tabs exist and are visible in a course. Tells you if Quizzes/Files/Pages are even enabled before you query them.', path: (a) => `/courses/${a.course_id}/tabs`, schema: { course_id: COURSE } });
-  get({ name: 'get_course_activity_stream', group: B, description: 'Recent activity scoped to a single course.', path: (a) => `/courses/${a.course_id}/activity_stream`, schema: { course_id: COURSE, limit: LIMIT }, paginate: true, max: 50, fenceFields: ['message', 'title'] });
+  get({ name: 'get_course_activity_stream', group: B, description: 'Recent activity scoped to a single course.', path: (a) => `/courses/${a.course_id}/activity_stream`, schema: { course_id: COURSE, limit: LIMIT }, paginate: true, max: 50, fields: STREAM_FIELDS, fenceFields: ['message', 'title'] });
   get({ name: 'list_sections', group: B, description: 'Sections within a course, including your own enrollment section.', path: (a) => `/courses/${a.course_id}/sections`, schema: { course_id: COURSE }, paginate: true });
   get({ name: 'list_course_users', group: B, comments: true, description: 'People in a course. Visibility depends on institution privacy settings; often limited or blocked for student tokens.', path: (a) => `/courses/${a.course_id}/users`, schema: { course_id: COURSE, enrollment_type: z.array(z.string()).optional().describe('student, teacher, ta, observer, designer'), search_term: z.string().optional(), limit: LIMIT }, params: (a) => ({ enrollment_type: a.enrollment_type, search_term: a.search_term, include: ['enrollments', 'avatar_url'] }), paginate: true, max: 100 });
   get({ name: 'get_user_in_course', group: B, comments: true, description: 'Details for one user within a course context.', path: (a) => `/courses/${a.course_id}/users/${a.user_id || 'self'}`, schema: { course_id: COURSE, user_id: z.string().optional().describe("Defaults to 'self'") }, params: () => ({ include: ['enrollments', 'bio'] }) });

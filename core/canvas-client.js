@@ -3,6 +3,27 @@
 //   - As the rate-limit quota runs low the client waits a little before each request instead of hitting the wall.
 //   - Pagination follows the Link header (case-insensitively), never page counters.
 //   - Errors are written for people: what happened and how to fix it, not a status code and a stack trace.
+//   - A tool call the app gave up on, or one that ran too long, stops before its next request (see callContext).
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/**
+ * The tool call a request belongs to, as { signal }. The registry runs every tool inside it, so the client can tell
+ * when that call was cancelled or ran past its time limit without each tool passing a signal around.
+ */
+export const callContext = new AsyncLocalStorage();
+
+const stoppedError = () => new CanvasError('Stopped: the app stopped waiting for this, or it ran too long. Nothing more was asked of Canvas.', { code: 'STOPPED' });
+
+/** Throw if the current tool call has been stopped. */
+export function checkStopped(signal = callContext.getStore()?.signal) {
+  if (signal?.aborted) throw stoppedError();
+}
+
+/** A request's time limit, joined with its call's stop signal when it is safe to cut the request off. */
+function limitFor(timeoutMs, stop, cuttable) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return stop && cuttable && typeof AbortSignal.any === 'function' ? AbortSignal.any([stop, timeout]) : timeout;
+}
 
 export class CanvasError extends Error {
   constructor(message, { status, url, body, code, host, attempts, step } = {}) {
@@ -19,11 +40,21 @@ export class CanvasError extends Error {
 }
 
 /** Normalize the base URL. Accepts with or without https://, a trailing slash and /api/v1. */
+/** A Canvas on this computer, which is the only place an unencrypted address is allowed (for development). */
+const onThisComputer = (host) => /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/i.test(host) || /\.localhost$/i.test(host);
+
+/**
+ * The school address as the server uses it: https://, no trailing slash, no /api/v1. An http:// address is used with
+ * https:// instead, so the token never travels unencrypted, unless Canvas runs on this computer.
+ */
 export function normalizeBase(raw) {
   let b = String(raw || '').trim().replace(/\/+$/, '');
   if (!b) return '';
   if (!/^https?:\/\//i.test(b)) b = 'https://' + b;
-  return b.replace(/\/api\/v1$/i, '');
+  b = b.replace(/\/api\/v1$/i, '');
+  const http = /^http:\/\/([^/]+)/i.exec(b);
+  if (http && !onThisComputer(http[1].replace(/:\d+$/, ''))) b = `https://${b.slice(http[0].length - http[1].length)}`;
+  return b;
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,6 +99,56 @@ export function explainStatus(status, url, body, { base = '' } = {}) {
     return `Canvas had a problem on its end. This is usually temporary, so try again in a few minutes (status page: https://status.instructure.com). ${where}`;
   }
   return `Canvas returned an error. ${where} ${said || (typeof body === 'string' ? body.slice(0, 300) : '')}`.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Where requests may go. Every request with the token passes through here, so no tool can send it anywhere else.
+// Text teachers and classmates wrote reaches the model, so a path is treated as chosen by someone hostile.
+// ---------------------------------------------------------------------------
+
+const refuse = (why) => new CanvasError(`Refused: ${why} Nothing was sent.`, { code: 'BLOCKED' });
+const notCanvas = (host, canvasHost) => refuse(`${host || 'that address'} is not your Canvas (${canvasHost}), and your token only ever goes to Canvas. If your school uses another address for Canvas, put that one in CANVAS_BASE_URL.`);
+
+/** Turn a path or a full address into the URL to call. The checks run first because the URL parser tidies `..` and backslashes away. */
+export function canvasUrl(p, api) {
+  const raw = String(p ?? '');
+  const root = new URL(api);
+  const absolute = /^https?:\/\//i.test(raw);
+  const pathPart = (absolute ? raw.replace(/^https?:\/\/[^/?#]*/i, '') : raw).split(/[?#]/)[0];
+  if (/[\u0000-\u001f\u007f]/.test(raw) || pathPart.includes('\\')) throw refuse('that address has characters no Canvas address uses.');
+  if (pathPart.split('/').some((s) => /^(\.|%2e){1,2}$/i.test(s))) throw refuse('that address tries to climb out of the Canvas API.');
+  let url;
+  try { url = new URL(absolute ? raw : `${api}${raw.startsWith('/') ? '' : '/'}${raw}`); } catch { throw refuse('that is not a valid address.'); }
+  if (url.origin !== root.origin) throw notCanvas(url.hostname, root.hostname);
+  if (url.pathname !== root.pathname && !url.pathname.startsWith(`${root.pathname}/`)) throw refuse('that address is outside the Canvas API.');
+  if (/%(?:2f|5c|[01][0-9a-f]|7f)/i.test(url.pathname)) throw refuse('that address hides a separator or control character.');
+  return url;
+}
+
+/** A path as Canvas would read it, however it was written: decoded until nothing changes, lower case, no doubled slashes. */
+function plainPath(pathname) {
+  let p = pathname;
+  for (let i = 0; i < 4; i++) {
+    const next = p.replace(/%([0-9a-f]{2})/gi, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === p) break;
+    p = next;
+  }
+  return p.toLowerCase().replace(/\/{2,}/g, '/');
+}
+
+const QUIZ_TAKING = /\/quiz_submissions|\/quizzes\/[^/]+\/submissions/;
+const SIGN_INS = /\/login\/session_token|\/users\/[^/]+\/tokens(\/|$)/;
+const CONTACT_METHODS = /\/communication_channels(\/[^/]+)?$/;
+
+/**
+ * Endpoints no tool may reach, checked on the final address. Taking a quiz is left out on purpose. The others would
+ * let someone act as you without this server: a sign-in link, a new token, or a new email address on the account.
+ */
+export function refuseBlocked(method, url) {
+  const p = plainPath(new URL(url).pathname);
+  if (method !== 'GET' && QUIZ_TAKING.test(p)) throw refuse('this path writes to a quiz submission. Quiz-taking endpoints are intentionally not available through this server.');
+  if (SIGN_INS.test(p)) throw refuse('this Canvas endpoint hands out sign-ins or tokens, so it is not available through this server.');
+  if ((method === 'POST' || method === 'DELETE') && CONTACT_METHODS.test(p)) throw refuse('adding or removing a contact method on your account is not available through this server.');
 }
 
 export function parseNextLink(header) {
@@ -128,10 +209,16 @@ export function networkError(e, { url, base = '', attempts = 1, timeoutMs = 0 })
  * out of time isn't repeated, because it would only wait just as long again.
  */
 export async function fetchWithRetry(fetchImpl, url, init, { retries = 3, base = '', timeoutMs }) {
+  const stop = callContext.getStore()?.signal;
   for (let attempt = 1; ; attempt++) {
+    checkStopped(stop);
     try {
-      return await fetchImpl(url, { ...init(), signal: AbortSignal.timeout(timeoutMs) });
+      // Uploads are never cut off part way. A download can be, since nothing changes in Canvas.
+      const request = init();
+      const cuttable = !request.method || request.method.toUpperCase() === 'GET';
+      return await fetchImpl(url, { ...request, signal: limitFor(timeoutMs, stop, cuttable) });
     } catch (e) {
+      checkStopped(stop);
       if (attempt > retries || timedOut(e)) throw networkError(e, { url, base, attempts: attempt, timeoutMs });
       await sleep(500 * attempt);
     }
@@ -160,8 +247,22 @@ export class CanvasClient {
     return run;
   }
 
+  /** True for an address on this Canvas. Only those get the token. */
+  isCanvasUrl(u) {
+    try { return new URL(u).origin === new URL(this.api).origin; } catch { return false; }
+  }
+
+  assertCanvasUrl(u) {
+    if (!this.isCanvasUrl(u)) throw notCanvas(hostOf(u), hostOf(this.api));
+  }
+
+  /** Throws if this request would be refused, without sending anything. */
+  check(method, p, params) {
+    refuseBlocked(method, this.buildUrl(p, params));
+  }
+
   buildUrl(p, params) {
-    const url = new URL(/^https?:\/\//i.test(p) ? p : `${this.api}${p.startsWith('/') ? '' : '/'}${p}`);
+    const url = canvasUrl(p, this.api);
     for (const [k, v] of Object.entries(params || {})) {
       if (v === undefined || v === null || v === '') continue;
       if (Array.isArray(v)) {
@@ -181,13 +282,16 @@ export class CanvasClient {
   /** `repeatable` marks a write where a second copy does no harm, like asking for an upload slot. */
   async raw(method, p, { params, body, headers, retries = 3, expectJson = true, repeatable = false } = {}) {
     const url = this.buildUrl(p, params);
+    refuseBlocked(method, url);
     const idempotent = method === 'GET' || repeatable;
+    const stop = callContext.getStore()?.signal;
     return this.enqueue(async () => {
       let attempt = 0;
       for (;;) {
         attempt++;
         const wait = throttleDelay(this.lastRemaining);
         if (wait) await sleep(wait);
+        checkStopped(stop); // a stopped call never starts another request, even one already waiting its turn
         this.requestCount++;
         const h = {
           Authorization: `Bearer ${this.token}`,
@@ -202,8 +306,10 @@ export class CanvasClient {
         }
         let res;
         try {
-          res = await this.fetch(url, { method, headers: h, body: payload, signal: AbortSignal.timeout(this.timeoutMs) });
+          // A read can be cut off when its call stops. A write never is: it either reaches Canvas whole or not at all.
+          res = await this.fetch(url, { method, headers: h, body: payload, signal: limitFor(this.timeoutMs, stop, method === 'GET') });
         } catch (e) {
+          checkStopped(stop);
           if (attempt <= retries && (idempotent || neverSent(e))) { await sleep(500 * attempt); continue; }
           throw networkError(e, { url, base: this.base, attempts: attempt, timeoutMs: this.timeoutMs });
         }
@@ -257,12 +363,15 @@ export class CanvasClient {
    * Follow rel="next" Link headers until exhausted or `max` items collected.
    * Header names are not case-guaranteed, so parsing is case-insensitive.
    */
-  async paginate(p, params, { max = 500, ttl } = {}) {
+  async paginate(p, params, { max = 500, ttl, quiet = false } = {}) {
     const key = `PAGES ${this.cacheKey('GET', p, params)}|${max}`;
     const useTtl = ttl === undefined ? this.ttl : ttl;
+    // A list that stops at `max` or the page limit while Canvas has more is noted on the tool call, so its answer
+    // can say so. `quiet` is for callers that page on purpose and say so themselves.
+    const noteCut = (count) => { if (!quiet) callContext.getStore()?.cut?.push({ path: String(p), count }); };
     if (useTtl > 0) {
       const hit = this.cache.get(key);
-      if (hit && Date.now() - hit.at < useTtl) return hit.data;
+      if (hit && Date.now() - hit.at < useTtl) { if (hit.cut) noteCut(hit.data.length); return hit.data; }
     }
     const out = [];
     let next = this.buildUrl(p, { per_page: 100, ...(params || {}) });
@@ -275,7 +384,9 @@ export class CanvasClient {
       next = parseNextLink(link);
     }
     const sliced = out.slice(0, max);
-    if (useTtl > 0) this.cache.set(key, { at: Date.now(), data: sliced });
+    const cut = out.length > max || (Boolean(next) && (out.length >= max || guard >= 25));
+    if (cut) noteCut(sliced.length);
+    if (useTtl > 0) this.cache.set(key, { at: Date.now(), data: sliced, cut });
     return sliced;
   }
 

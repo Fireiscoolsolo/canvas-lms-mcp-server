@@ -129,6 +129,35 @@ export function pageOf(items, { page = 1, size = DEFAULT_PAGE_SIZE }) {
  * Last-resort cap on the text of a result. Lists are paged before this point, so it only trims very large single
  * items, such as a long page body. The cut is marked so the model knows to narrow the request.
  */
+/**
+ * Structured results have a schema, so they can't be cut off mid-way like text. When one is too long, its longest list
+ * keeps as many items as fit. Returns { value, cut }, where cut says what was kept, or null when nothing was.
+ */
+export function trimToFit(value, max) {
+  const size = (v) => JSON.stringify(v).length;
+  if (!max || value === undefined || size(value) <= max) return { value, cut: null };
+  const copy = structuredClone(value);
+  const lists = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) { lists.push(v); v.forEach(walk); } else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(copy);
+  if (!lists.length) return { value, cut: null };
+  const longest = lists.reduce((a, b) => (size(b) > size(a) ? b : a));
+  const total = longest.length;
+  let lo = 0;
+  let hi = total;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    const rest = longest.splice(mid);
+    const fits = size(copy) <= max;
+    longest.push(...rest);
+    if (fits) lo = mid; else hi = mid - 1;
+  }
+  longest.splice(lo);
+  return { value: copy, cut: `${lo} of ${total} items` };
+}
+
 export function capText(text, max) {
   if (!max || text.length <= max) return text;
   return `${text.slice(0, max)}\n\n[Cut off here: the full answer was ${text.length.toLocaleString('en-US')} characters. Ask for fewer items, a page, or a narrower date range.]`;

@@ -4,10 +4,11 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { passwordMatches } from './oauth-provider.js';
-import { verifyTotp } from './totp.js';
+import { acceptTotp } from './totp.js';
 
 const COOKIE = 'canvas_status';
 const SESSION_MS = 12 * 3600000;
+const MAX_SESSIONS = 50;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -26,7 +27,13 @@ input{width:100%;padding:10px 12px;font-size:16px;border:1px solid var(--line);b
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;margin:0}
 @media (max-width:600px){dl{grid-template-columns:1fr}dt{margin-top:6px}}`;
 
-const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main></body></html>`;
+// The page's only script, kept apart from the data so an app name can only ever be text. App names come from open
+// registration, so anyone on the internet can choose one. The browser runs nothing else: see STATUS_CSP.
+const SIGN_OUT_PROMPT = "document.addEventListener('submit',function(e){var a=e.target.getAttribute('data-app');if(a!==null&&!confirm('Sign '+a+' out? It will need the password again.'))e.preventDefault()});";
+
+export const STATUS_CSP = `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${crypto.createHash('sha256').update(SIGN_OUT_PROMPT).digest('base64')}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+
+const page = (title, body, script = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`;
 
 export function loginPage({ error, totp }) {
   return page('Canvas server status', `<section style="max-width:380px;margin:12vh auto">
@@ -42,7 +49,7 @@ export function dashboardPage(s, csrf, fmt = (t) => (t ? new Date(t).toLocaleStr
   const tokenLine = days === undefined || days === null ? '<span class="muted">expiry unknown (your school hides it)</span>'
     : days < 0 ? '<span class="err">expired</span>' : `<span class="${days <= 7 ? 'warn' : 'ok'}">expires ${esc(fmt(s.token.expires_at))} (${days} day${days === 1 ? '' : 's'})</span>`;
   const sessions = (s.sessions || []).map((x) => `<tr><td>${esc(x.app)}</td><td>${x.signed_in ? '<span class="ok">signed in</span>' : '<span class="muted">not signed in</span>'}</td><td>${esc(fmt(x.last_used || x.registered)) || '<span class="muted">never</span>'}</td>
-<td><form method="POST" action="/status/sessions/${encodeURIComponent(x.client_id)}/sign-out" onsubmit="return confirm('Sign ${esc(x.app).replace(/'/g, '')} out? It will need the password again.')"><input type="hidden" name="csrf" value="${esc(csrf)}"><button type="submit">Sign out</button></form></td></tr>`).join('');
+<td><form method="POST" action="/status/sessions/${encodeURIComponent(x.client_id)}/sign-out" data-app="${esc(x.app)}"><input type="hidden" name="csrf" value="${esc(csrf)}"><button type="submit">Sign out</button></form></td></tr>`).join('');
   const logins = (s.logins || []).map((l) => `<tr><td>${esc(fmt(l.at))}</td><td>${l.ok ? '<span class="ok">signed in</span>' : `<span class="err">${esc(l.reason || 'failed')}</span>`}</td><td>${esc(l.app || '')}</td><td>${esc(l.ip || '')}</td></tr>`).join('');
   const cluster = (s.cluster || []).map((m) => `<tr><td>${esc(m.hostname)}${m.self ? ' <span class="muted">(this one)</span>' : ''}</td><td>${m.state === 'active' ? '<span class="ok">serving</span>' : esc(m.state)}</td><td>${esc(m.version || '')}</td><td>${esc(fmt(m.last_seen))}</td></tr>`).join('');
   const a = s.alerts || {};
@@ -65,41 +72,59 @@ export function dashboardPage(s, csrf, fmt = (t) => (t ? new Date(t).toLocaleStr
 <dt>Alerts</dt><dd>${a.on ? `<span class="ok">on</span> via ${esc((a.channels || []).join(', '))}` : '<span class="muted">off</span>'}</dd>
 ${a.on ? `<dt>About</dt><dd>${esc((a.types || []).join(', '))}</dd><dt>Checks</dt><dd>every ${esc(a.every_minutes)} minutes</dd>
 ${a.digest ? `<dt>Daily digest</dt><dd>${esc(a.digest)}</dd>` : ''}${a.quiet ? `<dt>Quiet hours</dt><dd>${esc(a.quiet)}</dd>` : ''}` : ''}</dl></section>
-<section><h2>Recent problems</h2>${(s.problems || []).length ? `<pre>${s.problems.map((p) => `${esc(fmt(p.at))}  ${esc(p.line)}`).join('\n')}</pre>` : '<p class="muted">Nothing has gone wrong recently.</p>'}</section>`);
+<section><h2>Recent problems</h2>${(s.problems || []).length ? `<pre>${s.problems.map((p) => `${esc(fmt(p.at))}  ${esc(p.line)}`).join('\n')}</pre>` : '<p class="muted">Nothing has gone wrong recently.</p>'}</section>`, SIGN_OUT_PROMPT);
 }
 
 /**
  * Express router for /status. getStatus() returns the dashboard data; revokeClient(id) signs an app out.
- * The page remembers you for 12 hours with a signed cookie; sign-out buttons carry a CSRF token.
+ * checkPassword(ip, password, code) decides a sign-in and returns { ok } or { ok, status, message }; the server passes
+ * the login page's, so both share one lockout and one login history.
+ * The page remembers you for 12 hours with a random session ID held in memory, so Lock ends it everywhere and a
+ * restart ends them all. Sign-out buttons carry a CSRF token.
  */
-export function createStatusRouter({ password, totpSecret = '', getStatus, revokeClient, limiter, fmt, now = () => Date.now() }) {
-  const key = crypto.createHash('sha256').update(`canvas-status-page:${password}`).digest();
+export function createStatusRouter({ password, totpSecret = '', getStatus, revokeClient, limiter, fmt, checkPassword, now = () => Date.now() }) {
+  const check = checkPassword || ((_ip, entered, code) => (passwordMatches(entered, password) && (!totpSecret || acceptTotp(totpSecret, code, { now: now() }))
+    ? { ok: true } : { ok: false, status: 401, message: 'That password (or code) is wrong.' }));
+  const key = crypto.randomBytes(32); // for CSRF tokens only; new on every start
+  const sessions = new Map(); // id -> expires (ms)
   const sign = (v) => crypto.createHmac('sha256', key).update(v).digest('base64url');
   const read = (req) => (String(req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`)) || '').slice(COOKIE.length + 1);
   const same = (a, b) => typeof a === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
   const authed = (req) => {
-    const [exp, mac] = read(req).split('.');
-    return Boolean(exp && mac && Number(exp) > now() && same(mac, sign(exp)));
+    const id = read(req);
+    const expires = id ? sessions.get(id) : undefined;
+    if (expires && expires <= now()) sessions.delete(id);
+    return Boolean(expires && expires > now());
+  };
+  const startSession = () => {
+    for (const [id, expires] of sessions) if (expires <= now()) sessions.delete(id);
+    while (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value); // the oldest goes first
+    const id = crypto.randomBytes(32).toString('base64url');
+    sessions.set(id, now() + SESSION_MS);
+    return id;
   };
   const csrf = (req) => sign(`csrf:${read(req)}`);
   const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=/status; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
 
   const router = express.Router();
   router.use(express.urlencoded({ extended: false }));
-  router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); res.set('X-Frame-Options', 'DENY'); next(); });
+  router.use((_req, res, next) => { res.set({ 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': STATUS_CSP, 'Referrer-Policy': 'no-referrer' }); next(); });
 
   router.get('/', async (req, res) => {
     if (!authed(req)) return res.type('html').send(loginPage({ totp: Boolean(totpSecret) }));
     res.type('html').send(dashboardPage(await getStatus(), csrf(req), fmt));
   });
   router.post('/login', limiter || ((_q, _s, next) => next()), (req, res) => {
-    const ok = passwordMatches(req.body?.password, password) && (!totpSecret || verifyTotp(totpSecret, req.body?.code, { now: now() }));
-    if (!ok) return res.status(401).type('html').send(loginPage({ error: 'That password (or code) is wrong.', totp: Boolean(totpSecret) }));
-    const exp = String(now() + SESSION_MS);
-    res.set('Set-Cookie', cookie(`${exp}.${sign(exp)}`, SESSION_MS / 1000));
+    const attempt = check(req.ip, req.body?.password, req.body?.code, 'Status page');
+    if (!attempt.ok) return res.status(attempt.status || 401).type('html').send(loginPage({ error: attempt.message, totp: Boolean(totpSecret) }));
+    res.set('Set-Cookie', cookie(startSession(), SESSION_MS / 1000));
     res.redirect(303, '/status');
   });
-  router.post('/logout', (_req, res) => { res.set('Set-Cookie', cookie('', 0)); res.redirect(303, '/status'); });
+  router.post('/logout', (req, res) => {
+    sessions.delete(read(req));
+    res.set('Set-Cookie', cookie('', 0));
+    res.redirect(303, '/status');
+  });
   router.post('/sessions/:id/sign-out', (req, res) => {
     if (!authed(req) || !same(req.body?.csrf, csrf(req))) return res.status(403).type('html').send(page('Expired', '<section><p>This page expired. <a href="/status">Reload it</a> and try again.</p></section>'));
     revokeClient(req.params.id);

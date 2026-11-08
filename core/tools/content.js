@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { extractFileText, MAX_FILE_BYTES } from '../file-text.js';
 
 export default function register(ctx) {
-  const { fetchFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, FILE_FIELDS, saveDownload, localize } = ctx;
+  const { readFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
 
   const J = 'content';
 
@@ -62,10 +62,10 @@ export default function register(ctx) {
       const meta = await canvas.get(`/files/${a.file_id}`);
       const name = meta.display_name || meta.filename || `file-${a.file_id}`;
       if (meta.size > MAX_FILE_BYTES) return fail(`"${name}" is ${Math.round(meta.size / 1048576)} MB, which is too big to read here (limit 25 MB). Use download_file to save it instead.`);
-      const res = await fetchFile(meta.url);
+      const bytes = await readFile(meta.url, MAX_FILE_BYTES, `"${name}"`);
       let extracted;
       try {
-        extracted = await extractFileText(Buffer.from(await res.arrayBuffer()), { name, contentType: meta['content-type'], html2text });
+        extracted = await extractFileText(bytes, { name, contentType: meta['content-type'], html2text });
       } catch (e) {
         return fail(e.message);
       }
@@ -84,9 +84,9 @@ export default function register(ctx) {
   });
 
   get({ name: 'list_my_files', group: J, description: 'Files in your personal Canvas storage.', path: '/users/self/files', schema: { search_term: z.string().optional(), limit: LIMIT }, params: (a) => ({ search_term: a.search_term }), paginate: true, fields: FILE_FIELDS });
-  tool({ name: 'upload_to_my_files', group: J, write: true, description: 'Upload a local file into your personal Canvas file storage.', schema: { file_path: z.string(), parent_folder_path: z.string().optional().describe("e.g. 'my subfolder'") }, handler: async (a) => ok(pick(await uploadFile('/users/self/files', a.file_path, { parent_folder_path: a.parent_folder_path }), ['id', 'display_name', 'size', 'url'])) });
+  tool({ name: 'upload_to_my_files', group: J, write: true, confirm: true, preview: async (a) => ({ action: 'UPLOAD this file to your Canvas files', ...filePreview(a.file_path), parent_folder_path: a.parent_folder_path }), description: 'Upload a local file into your personal Canvas file storage.', schema: { file_path: z.string(), parent_folder_path: z.string().optional().describe("e.g. 'my subfolder'") }, handler: async (a) => ok(pick(await uploadFile('/users/self/files', a.file_path, { parent_folder_path: a.parent_folder_path }), ['id', 'display_name', 'size', 'url'])) });
   get({ name: 'get_storage_quota', group: J, description: 'Your personal Canvas storage quota and how much is used.', path: '/users/self/files/quota' });
-  tool({ name: 'delete_my_file', group: J, write: true, confirm: true, description: 'Delete a file from your personal Canvas storage.', schema: { file_id: ID }, handler: async (a) => ok(await canvas.del(`/files/${a.file_id}`), 'Deleted.') });
+  tool({ name: 'delete_my_file', group: J, write: true, confirm: true, preview: async (a) => { const f = await canvas.get(`/files/${a.file_id}`); return { action: 'DELETE this file from Canvas', file: f.display_name, size: f.size, updated_at: f.updated_at }; }, description: 'Delete a file from your personal Canvas storage.', schema: { file_id: ID }, handler: async (a) => ok(await canvas.del(`/files/${a.file_id}`), 'Deleted.') });
   tool({ name: 'create_folder', group: J, write: true, description: 'Create a folder in your personal Canvas storage.', schema: { name: z.string(), parent_folder_id: z.string().optional() }, handler: async (a) => ok(await canvas.post('/users/self/folders', { name: a.name, parent_folder_id: a.parent_folder_id })) });
 
   get({ name: 'list_pages', group: J, description: 'Wiki pages in a course.', path: (a) => `/courses/${a.course_id}/pages`, schema: { course_id: COURSE, search_term: z.string().optional(), limit: LIMIT }, params: (a) => ({ search_term: a.search_term, sort: 'updated_at', order: 'desc' }), paginate: true, fields: ['page_id', 'url', 'title', 'updated_at', 'published', 'front_page', 'html_url'] });
@@ -108,7 +108,7 @@ export default function register(ctx) {
     name: 'get_media_captions', group: J,
     description: 'List caption/subtitle tracks available on a recorded lecture. Captions are the closest thing Canvas gives you to a lecture transcript.',
     schema: { media_id: z.string().describe('media_id from list_media_objects') },
-    handler: async (a) => ok(await canvas.get(`/media_objects/${a.media_id}/media_tracks`, { include: ['content', 'webvtt_content'] })),
+    handler: async (a) => ok(fenceProse(await canvas.get(`/media_objects/${a.media_id}/media_tracks`, { include: ['content', 'webvtt_content'] }), 'lecture captions')),
   });
   tool({
     name: 'download_media_captions', group: J, local: true,
@@ -120,7 +120,7 @@ export default function register(ctx) {
       const t = a.track_id ? tracks.find((x) => String(x.id) === String(a.track_id)) : (tracks.find((x) => /^en/i.test(x.locale || '')) || tracks[0]);
       if (!t) return fail('Requested caption track not found.');
       let content = t.content;
-      if (!content && t.url) content = await (await fetchFile(t.url)).text();
+      if (!content && t.url) content = (await readFile(t.url, MAX_FILE_BYTES, 'This caption track')).toString('utf8');
       if (!content) return fail('Caption track had no retrievable content.');
       const plain = content.replace(/^WEBVTT.*$/m, '').replace(/^\d+$/gm, '').replace(/^[\d:.,]+\s*-->\s*[\d:.,]+.*$/gm, '').replace(/\n{2,}/g, '\n').trim();
       const saved = await saveDownload({ text: plain, dir: a.dest_dir || DOWNLOAD_DIR, name: `captions-${a.media_id}-${t.locale || 'xx'}.txt`, contentType: 'text/plain' });
@@ -128,7 +128,7 @@ export default function register(ctx) {
     },
   });
 
-  tool({ name: 'create_content_export', group: J, write: true, description: 'Trigger a full course export (.imscc common cartridge). Useful for archiving a course before term-end access is revoked. Returns a progress URL; poll with get_content_export.', schema: { course_id: COURSE, export_type: z.enum(['common_cartridge', 'zip']).optional() }, handler: async (a) => ok(await canvas.post(`/courses/${a.course_id}/content_exports`, { export_type: a.export_type || 'common_cartridge', skip_notifications: true }), 'Export queued. Poll get_content_export with the returned id.') });
+  tool({ name: 'create_content_export', group: J, write: true, confirm: true, preview: async (a) => ({ action: 'Ask Canvas to package this course as an export file', course_id: a.course_id, export_type: a.export_type || 'common_cartridge' }), description: 'Trigger a full course export (.imscc common cartridge). Useful for archiving a course before term-end access is revoked. Returns a progress URL; poll with get_content_export.', schema: { course_id: COURSE, export_type: z.enum(['common_cartridge', 'zip']).optional() }, handler: async (a) => ok(await canvas.post(`/courses/${a.course_id}/content_exports`, { export_type: a.export_type || 'common_cartridge', skip_notifications: true }), 'Export queued. Poll get_content_export with the returned id.') });
   get({ name: 'get_content_export', group: J, description: 'Check the status of a course export and get the download URL once ready.', path: (a) => `/courses/${a.course_id}/content_exports/${a.export_id}`, schema: { course_id: COURSE, export_id: ID } });
 
   get({ name: 'list_external_tools', group: J, description: 'LTI external tools available in a course (publisher platforms, proctoring, third-party apps).', path: (a) => `/courses/${a.course_id}/external_tools`, schema: { course_id: COURSE, limit: LIMIT }, paginate: true, fields: ['id', 'name', 'description', 'url', 'domain', 'workflow_state'] });

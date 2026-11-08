@@ -41,11 +41,32 @@ export function totp(secret, { now = Date.now(), step = 30, digits = 6 } = {}) {
   return String(n % 10 ** digits).padStart(digits, '0');
 }
 
-/** Accept the current code, or the one before or after, to allow for a clock that is a little off. */
-export function verifyTotp(secret, code, { now = Date.now() } = {}) {
+/** The 30-second step a code belongs to: the current one, or the one before or after for a clock a little off. */
+function matchingStep(secret, code, now) {
   const given = String(code || '').replace(/\s/g, '');
-  if (!/^\d{6}$/.test(given)) return false;
-  return [-1, 0, 1].some((w) => crypto.timingSafeEqual(Buffer.from(totp(secret, { now: now + w * 30000 })), Buffer.from(given)));
+  if (!/^\d{6}$/.test(given)) return null;
+  for (const w of [-1, 0, 1]) {
+    if (crypto.timingSafeEqual(Buffer.from(totp(secret, { now: now + w * 30000 })), Buffer.from(given))) return Math.floor((now + w * 30000) / 30000);
+  }
+  return null;
+}
+
+/** Whether a code is right, whether or not it was used before. */
+export function verifyTotp(secret, code, { now = Date.now() } = {}) {
+  return matchingStep(secret, code, now) !== null;
+}
+
+// The newest step accepted for each secret. Shared by the sign-in page and the status page, so a code seen on one
+// can't be replayed on the other. Kept in memory: a code is only good for about a minute anyway.
+const lastAccepted = new Map();
+
+/** Sign-in check: a right code that hasn't been used yet. Using it means this code, and older ones, stop working. */
+export function acceptTotp(secret, code, { now = Date.now() } = {}) {
+  const step = matchingStep(secret, code, now);
+  const key = crypto.createHash('sha256').update(String(secret)).digest('hex');
+  if (step === null || step <= (lastAccepted.get(key) ?? -Infinity)) return false;
+  lastAccepted.set(key, step);
+  return true;
 }
 
 /** The link an authenticator app scans (shown as a QR code by the setup app). */

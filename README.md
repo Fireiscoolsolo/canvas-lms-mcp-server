@@ -200,7 +200,7 @@ Then ask your assistant: **"Run test_connection."**
 
 ## Status page
 
-Open **`https://<your-domain>/status`** in any browser and enter your password. It shows whether the server is online and which computer is serving, your Canvas connection and when the token expires, the apps that are signed in (each with a **Sign out** button), recent sign-ins, the computers in your group, your phone-alert settings and recent problems. Nothing secret is ever shown, and the page locks itself after 12 hours.
+Open **`https://<your-domain>/status`** in any browser and enter your password. It shows whether the server is online and which computer is serving, your Canvas connection and when the token expires, the apps that are signed in (each with a **Sign out** button), recent sign-ins, the computers in your group, your phone-alert settings and recent problems. Nothing secret is ever shown, and the page locks itself after 12 hours, or when the server restarts. **Lock** ends that sign-in everywhere. Wrong passwords here count toward the same lockout as the login page, and show up in recent sign-ins.
 
 From a terminal, `canvas-lms-mcp-remote status` and `canvas-lms-mcp-remote sessions` show the same things.
 
@@ -212,7 +212,7 @@ You can run the same server on two or more computers, for example a desktop and 
 
 ## Docker
 
-For a home server or NAS: copy `.env.example` to `.env`, fill it in, add `NGROK_AUTHTOKEN=<your ngrok authtoken>`, then:
+For a home server or NAS: copy `.env.example` to `.env`, fill it in with your own password and cluster secret (the server won't start with the example values), add `NGROK_AUTHTOKEN=<your ngrok authtoken>`, then:
 
 ```bash
 docker compose up -d
@@ -229,18 +229,18 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_API_TOKEN` | Yes | — | Your Canvas personal access token |
 | `CANVAS_BASE_URL` | Yes | — | e.g. `https://yourschool.instructure.com` |
 | `CANVAS_MCP_PUBLIC_URL` | Yes | — | Your public address (ngrok static domain or Cloudflare hostname) |
-| `CANVAS_MCP_PASSWORD` | Yes | — | Password for the login and status pages |
-| `CANVAS_MCP_CLUSTER_SECRET` | Yes | — | Secret that protects the `/internal/*` endpoints the computers use to coordinate |
+| `CANVAS_MCP_PASSWORD` | Yes | — | Password for the login and status pages. Use 12 or more characters |
+| `CANVAS_MCP_CLUSTER_SECRET` | Yes | — | Secret that protects the `/internal/*` endpoints the computers use to coordinate. At least 16 random characters |
 | `CANVAS_MCP_TOTP_SECRET` | | — | Turns on two-factor codes; set it up with `canvas-lms-mcp-remote totp-setup` |
 | `CANVAS_MCP_TUNNEL` | | `ngrok` | `ngrok`, `cloudflared`, or `none` if you route the address yourself |
 | `CANVAS_MCP_CLOUDFLARED_TOKEN` | | — | Tunnel token from the Cloudflare dashboard |
 | `CANVAS_MCP_FAILOVER_SECONDS` | | `50` | How long the serving computer can be silent before another takes over |
-| `CANVAS_ALLOW_WRITES` | | `true` | `false` = read-only mode |
-| `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools |
+| `CANVAS_ALLOW_WRITES` | | `true` | `false` (or `0`, `no`, `off`) = nothing in Canvas can change. A value it can't read stops the server |
+| `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools. A value it can't read stops the server |
 | `CANVAS_TOOLS` / `CANVAS_DISABLE_TOOLS` | | all / — | Only these tool groups or tools, or leave these out |
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
 | `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
-| `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files |
+| `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files. They can't save anywhere outside it |
 | `CANVAS_IP_FAMILY` | | both | `4` or `6` uses only that kind of address. Worth trying if new connections time out |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
@@ -319,14 +319,18 @@ Only the computer that is serving sends alerts, and it remembers what it already
 
 ## Security
 
-- **Confirmation gate:** tools that send, submit, post or delete return a preview first and only act when called with `confirm: true`.
+- **Confirmation gate:** tools that send, submit, post, upload or delete return a preview and a one-time token first. The token only works for that exact request, for 5 minutes, and is refused if the assignment or file changed. It can't prove you agreed, so keep your AI app's own "ask before running" setting on for these tools.
 - **Prompt-injection fencing:** text other people wrote is wrapped in `<<<CANVAS_CONTENT>>>` markers and labelled as untrusted.
-- **No quiz-taking:** quiz attempt endpoints are deliberately not included.
+- **Your token only goes to Canvas:** every request is checked, so no tool can send it anywhere else.
+- **The server's disk:** downloads only go in the download folder and never replace a file. Uploads refuse `.env` files, keys, sign-in files and this server's settings folder.
+- **No quiz-taking:** quiz attempt endpoints are deliberately not included, and writes to them are refused for every tool, however the address is written.
 - **Loopback only:** the server listens on `127.0.0.1`. The only way in from outside is the tunnel.
-- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per address, and five wrong passwords lock that address out for 15 minutes. Access tokens last 1 hour, and refresh tokens are replaced every time they're used. The password check takes the same time whatever you type.
-- **Two-factor codes (optional):** `canvas-lms-mcp-remote totp-setup` adds a code from your authenticator app to the login and status pages.
+- **It won't start open:** with a public address it refuses to start without a real password, and it refuses the example values from `.env.example`.
+- **OAuth 2.1:** login is limited to 10 attempts per 15 minutes per address, and five wrong passwords lock that address out for 15 minutes. Access tokens last 1 hour, and refresh tokens are replaced every time they're used. An old refresh token used again signs that sign-in out. Tokens meant for another server are refused. The password check takes the same time whatever you type.
+- **Look-alike apps are flagged:** the login page shows where you go back to after connecting, and warns you when an app calls itself Claude or ChatGPT but would send your sign-in somewhere else.
+- **Two-factor codes (optional):** `canvas-lms-mcp-remote totp-setup` adds a code from your authenticator app to the login and status pages. Each code works once.
 - **You can see and end sign-ins:** the status page lists signed-in apps and recent sign-in attempts. Unused apps are signed out after 90 days, and `rotate-password` signs everyone out.
-- **Separate coordination secret:** the endpoints the computers use to coordinate need a separate shared secret, compared in constant time.
+- **Separate coordination secret:** the endpoints the computers use to coordinate need a separate shared secret, compared in constant time. Too many wrong guesses lock that address out.
 - **No secrets in logs:** tokens, passwords and webhook keys are removed from every log line. The public `/healthz` check says nothing about your account.
 - **Download links expire:** files the server saves are shared through private links that work for one hour.
 
@@ -337,7 +341,7 @@ Only the computer that is serving sends alerts, and it remembers what it already
 This is a study and organization tool. It helps you see deadlines, understand your grades and plan your week. It never takes quizzes, and nothing is sent or submitted until you've seen a preview and confirmed it.
 
 - Follow your school's academic integrity and acceptable-use policies. Some schools restrict personal API tokens or third-party tools.
-- Want zero risk of accidental changes? Set `CANVAS_ALLOW_WRITES=false` for read-only mode.
+- Want to be sure nothing in Canvas changes? Set `CANVAS_ALLOW_WRITES=false` for read-only mode. Downloads still work, into your download folder.
 
 ## Troubleshooting
 

@@ -3,6 +3,64 @@
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
 ([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
 
+## Unreleased
+
+### Security
+- **The public health check says less.** Through your public address, `/healthz` now only says the server is up and how many tools it has. The version and whether sign-in is on are only shown on the computer itself, for `doctor` and `status`.
+- **The Docker images are pinned.** The Dockerfile and the tunnel images in `docker-compose.yml` name an exact version and digest instead of `latest`, so a rebuild uses what was tested.
+- **The tunnel program doesn't see your secrets.** ngrok and cloudflared were started with the server's whole environment, including the Canvas token, password and cluster secret. They now get everything except this server's `CANVAS_` settings, plus the tunnel token cloudflared needs.
+- **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN# Changelog
+
+All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
+([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
+
+ or `COM¹`. A long name is shortened without losing its extension.
+- **Files can't be bigger than they look.** A Word or PowerPoint file is read only up to 64 MB of text inside, so a small crafted file that expands to gigabytes is refused instead of taking the server down, even when it lies about its size. `read_course_file` stops at 25 MB as the file arrives, whatever Canvas says its size is. Downloads are now written to disk as they arrive instead of being held in memory, up to 4 GB, and a failed one leaves nothing half-written.
+- **The token is never sent unencrypted.** A school address written with `http://` is now used with `https://`, and the log says so. Only a Canvas running on the same computer keeps `http://`.
+- **Your Canvas token only goes to Canvas.** Every request now passes one check, so no tool can send the token to another address, whether that address came from the model, a next-page link, a file record or an upload. Files stored on another host are fetched without it. `download_submission_attachment` only takes addresses on your Canvas. If your school uses a second address for Canvas, use that one in `CANVAS_BASE_URL`.
+- **The quiz block can't be spelled around.** It now runs on the final address, for every tool and every write method.
+- **Requests stay inside the Canvas API.** A path can't climb out of `/api/v1`, and endpoints that hand out sign-in links or tokens, or add a contact method to your account, are refused.
+- **An ID can only be an ID.** A value with `/`, `\`, `?`, `#` or `%` in it is refused, so it can't turn a harmless tool into a request to a different endpoint. Canvas's own forms such as `self` and `sis_course_id:BIO-101` still work.
+- **Settings that restrict the server can't fail open.** `CANVAS_ALLOW_WRITES` now understands `false`, `0`, `no` and `off` in any case, and `CANVAS_PROFILE` ignores stray spaces. A value it can't read now means the safe choice, and every Canvas tool says what to fix instead of carrying on with everything switched on.
+- A name in `CANVAS_TOOLS` or `CANVAS_DISABLE_TOOLS` that matches nothing is now reported in the log and in `get_server_config`.
+- **Downloads stay in your download folder.** `dest_dir` can only be `CANVAS_DOWNLOAD_DIR` or a folder inside it, even through links. To save somewhere else, change `CANVAS_DOWNLOAD_DIR`.
+- **A download never replaces a file.** A different file with the same name is saved as `name (1).pdf`, and the same file isn't saved twice.
+- **Private files are never uploaded.** Uploads refuse `.env` files, keys, sign-in files, this server's settings folder, and the folders that browsers and AI apps keep their data in. Schoolwork still uploads from any other folder.
+- **Confirmation can't be skipped.** Apps connected to Remote get a preview with a one-time token, tied to that tool and those exact details, for 5 minutes. A submission, delete or upload is refused if the assignment, item or file changed after the preview. The token stops stale or swapped requests. It doesn't prove a person said yes, so your AI app's own approval step still matters.
+- **More actions ask first:** `upload_to_my_files`, `upload_submission_file`, `upload_comment_attachment`, `delete_planner_note`, `delete_bookmark`, `update_planner_note`, `update_calendar_event`, `rate_entry`, `create_content_export`, `export_course_archive`, and every write through `raw_canvas_request`.
+- **Fences around other people's text are harder to break.** A fake end marker is now caught in any case, with invisible characters, in full-width or look-alike brackets, or with two brackets instead of three. Text that only starts like a fence is fenced like anything else. Every tool that passes Canvas text straight through now fences the longer fields (descriptions, bodies, messages, captions, rubric and outcome text, quiz items, planner notes) wherever they appear, and text sent to Canvas is refused if it carries any spelling of a marker.
+- **The server won't start open to the internet.** With a public address or a `CANVAS_MCP_HOST` other computers can reach, it now stops with a message if the password is empty or still the example from `.env.example`, if the cluster secret is the example or under 16 characters, if there's no public address for sign-in to use, or if a restrictive setting can't be read. The supervisor makes the same check, and `doctor` reports it. A password under 12 characters only warns for now. `--stdio` is not affected.
+- **Guessing the cluster secret gets locked out** after 20 wrong tries from one address in 15 minutes. Correct requests never count, so heartbeats are safe.
+- **An app's name can't run as code on the status page.** Anyone could register an app, so a crafted name could run in your browser when you clicked Sign out. A name with an apostrophe also skipped the "are you sure" prompt. Both are fixed.
+- **Password pages are harder to abuse.** The login and status pages now refuse to be framed, aren't cached, send no referrer, and the browser won't run any script they didn't ship with.
+- **The login page says where your sign-in goes.** Anyone who knows your address could register an app called "Claude" that sends the sign-in to their own site, and your real login page would have asked for your password. The page now names the site you go back to, warns you when an app calls itself Claude or ChatGPT but goes somewhere else, and flags sites it doesn't know.
+- **Sign-ins are stricter.** An app has to register a return address, and a code only works with the address it was sent to. Only the `canvas` scope is granted. A token issued for another server's address is refused. At most 100 apps can be registered: old ones that never finished signing in make room, and signed-in apps are never removed.
+- **A stolen refresh token stops working.** Using a refresh token after it was replaced now signs that sign-in out, so a copied token and the real app can't both keep going. The app just asks for the password again.
+- **Two-factor codes work once**, across the login and status pages. With two-factor on, a wrong password and a wrong code get the same message, so the page never says the password was right.
+- Sign-in codes and wrong-password counts no longer pile up in memory, and sign-in error pages aren't cached.
+- **Lock on the status page really signs you out.** It used to clear the cookie in your own browser only, so a copied cookie kept working for up to 12 hours. Sessions are now random IDs that Lock ends everywhere, and a restart ends them all, so you may need to enter the password again after updating.
+- **Wrong passwords on the status page count.** They now go through the same lockout as the login page, appear in recent sign-ins, and a lockout sends the security alert. With security alerts on, signing in to the status page sends a sign-in alert too.
+
+- **Secret files are private.** On Linux and macOS, `.env`, its backups, `oauth-store.json` and `login-history.json` are now written so only your user can read them. `.env.backup-*` and temp files are now in `.gitignore`.
+
+### Fixed
+- **Long tool calls work.** A request over 100 KB, such as a long essay for `submit_assignment_text`, was refused with a web page instead of reaching the tool. `/mcp` now takes up to 4 MB, the same as the MCP SDK's own limit, and anything bigger, or anything that isn't JSON, gets a JSON answer that says what went wrong.
+- **The activity stream fits in one answer.** On a real Canvas one page of it was about 200,000 characters, twice the size of an answer, because items about a grade carry the whole assignment, course and student record. The activity stream tools now keep what says what happened: the title, message, score, grade, comments, link and dates.
+- **Long lists say when they were cut short.** When a tool reads as many items as it allows and Canvas has more, the answer now starts with a heads-up, instead of silently treating the first ones as everything. A structured answer is also kept within the size limit: its longest list keeps as many items as fit, and the answer says so.
+- **Two computers no longer both serve on Cloudflare Tunnel.** Cloudflare runs every connector it is given, so a standby that lost internet for a minute and took over kept serving alongside the first computer, and apps failed at random. A serving computer now asks the public address who answers it, and when another computer does, the one that took over more recently steps back. A step-down request can now name the computer it is for, so it can't land on the wrong one.
+- **One slow tool no longer holds up every device.** Requests to `/mcp` were handled one at a time, so a five-minute export kept your phone waiting five minutes for anything at all. Each request now gets its own server, sharing one Canvas connection, so other requests answer straight away.
+- **A tool the app stops waiting for stops asking Canvas.** When your AI app cancels a call or the connection drops, a tool that only reads stops before its next Canvas request instead of running to the end. Anything that changes Canvas always finishes, so a submission never stops half way. A read that runs for 20 minutes is stopped and says so.
+- **An interrupted handoff no longer signs everyone out.** A standby computer saves its copy of the sign-ins whole or not at all, and only if the copy looks right. Before, a crash or a bad answer part way could leave a broken file. The login history is saved the same way.
+- **Remote works on Node 18 again.** Every request to `/mcp` failed with "crypto is not defined", because the MCP SDK's HTTP transport uses a global that Node 18 doesn't have by default.
+- **Apps on the same computer can sign in on any port.** An app that came back on a different port than it registered got past the first sign-in step and was then refused at the password, although the standard allows it.
+
+### Releases
+- **A publish from GitHub checks itself first.** Every file that names the version has to agree, the changelog needs a section for it, and the shared tools have to match the other edition. The actions it uses are pinned to exact versions, and the MCP Registry publisher is a fixed release checked against its published checksum. Every test run now also fails if the shared tools differ between the two editions.
+- The number of tools written in the README, the website and the package listings is now checked against what the server registers, so it can't drift again.
+
+### If your server stops starting after this update
+Read the last lines of `supervisor.log`, or run `canvas-lms-mcp-remote doctor`. It names the setting to change in `.env`. Docker setups need `CANVAS_MCP_PUBLIC_URL` and your own `CANVAS_MCP_PASSWORD`.
+
 ## 1.3.1
 
 ### Fixed

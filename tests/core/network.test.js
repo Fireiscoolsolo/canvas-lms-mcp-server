@@ -10,7 +10,7 @@ import { CanvasClient, fetchWithRetry, hideAddresses, neverSent, networkError } 
 import { readConfig } from '../../core/config.js';
 import { applyNetworkSettings, checkConnections, patientLookup, reportConnections } from '../../core/network.js';
 import { createShared } from '../../core/shared.js';
-import { connect } from './fake-canvas.js';
+import { connect, confirmed } from './fake-canvas.js';
 
 const failure = (code, more = {}) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(`${code} happened`), { code, ...more }) });
 const client = (fetchImpl) => new CanvasClient({ api: 'https://s.example.edu/api/v1', token: 't', ttl: 0, base: 'https://s.example.edu', fetchImpl });
@@ -115,7 +115,7 @@ test('a failed upload says which step broke, in the answer and in the log, witho
   const lines = [];
   const { file, override } = upload({ error: failure('ECONNRESET') });
   const s = await connect({ override, log: (l) => lines.push(l) });
-  const res = await s.client.callTool({ name: 'upload_to_my_files', arguments: { file_path: file } });
+  const res = await confirmed(s.client, 'upload_to_my_files', { file_path: file });
   assert.equal(res.isError, true);
   assert.match(textOf(res), /step 2 of 3 \(storage upload on files\.example\.net\).*ECONNRESET.*after 4 attempts/);
   assert.doesNotMatch(textOf(res), /SIGNED-SECRET|school address/);
@@ -130,7 +130,7 @@ test('a submission that fails after the upload is not repeated and says to check
   const lines = [];
   const { file, override } = upload({ body: { id: '77', filename: 'essay.txt', size: 5 } }, (method, p) => (method === 'POST' && p.endsWith('/submissions') ? { error: failure('ECONNRESET') } : undefined));
   const s = await connect({ calls, override, log: (l) => lines.push(l) });
-  const res = await s.client.callTool({ name: 'submit_assignment_file', arguments: { course_id: '1', assignment_id: '1', file_path: file, confirm: true } });
+  const res = await confirmed(s.client, 'submit_assignment_file', { course_id: '1', assignment_id: '1', file_path: file });
   assert.equal(res.isError, true);
   assert.match(textOf(res), /file id 77.*creating the submission failed.*get_my_submission/);
   assert.equal(calls.filter((c) => c.method === 'POST' && c.path.endsWith('/submissions')).length, 1);
@@ -147,7 +147,7 @@ test('a missing file names the computer the server runs on', async () => {
 
 test('a file download survives a dropped connection', async () => {
   let n = 0;
-  const { fetchFile } = createShared({ canvas: {}, cfg: { token: 't', base: '' }, dates: {}, fetchImpl: async () => { if (++n < 2) throw new TypeError('fetch failed'); return new Response('data'); } });
+  const { fetchFile } = createShared({ canvas: client(async () => new Response('{}')), cfg: { token: 't', base: '' }, dates: {}, fetchImpl: async () => { if (++n < 2) throw new TypeError('fetch failed'); return new Response('data'); } });
   assert.equal(await (await fetchFile('https://x.example/f')).text(), 'data');
 });
 

@@ -8,7 +8,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createCanvasServer } from '../../core/index.js';
 
 export const BASE = 'https://canvas.example.edu';
-const soon = (h) => new Date(Date.now() + h * 3600000).toISOString();
+const STARTED = Date.now(); // fixed, so a record reads the same on every request, as it does in Canvas
+const soon = (h) => new Date(STARTED + h * 3600000).toISOString();
 
 /** One made-up record with the fields many endpoints share, so tools that read any of them find something. */
 export function sample(id = '1') {
@@ -41,7 +42,7 @@ export function fakeFetch({ calls = [], override } = {}) {
     const u = new URL(url);
     const method = (opts.method || 'GET').toUpperCase();
     const p = u.pathname.replace(/^\/api\/v1/, '');
-    calls.push({ method, path: p, query: u.search, body: opts.body ? (typeof opts.body === 'string' ? JSON.parse(opts.body) : '[form]') : undefined });
+    calls.push({ method, path: p, query: u.search, body: opts.body ? (typeof opts.body === 'string' ? JSON.parse(opts.body) : '[form]') : undefined, url: u.href, auth: opts.headers?.Authorization });
     const custom = override?.(method, p, u);
     if (custom?.error) throw custom.error;
     if (custom) return new Response(typeof custom.body === 'string' ? custom.body : JSON.stringify(custom.body), { status: custom.status || 200, headers: { 'content-type': 'application/json', ...(custom.headers || {}) } });
@@ -56,12 +57,12 @@ export function fakeFetch({ calls = [], override } = {}) {
 }
 
 /** A server on the fake Canvas plus a connected in-memory client. */
-export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log } = {}) {
+export async function connect({ env = {}, calls = [], override, clientCapabilities = {}, elicitation = true, onElicit, log, wrapFetch = (f) => f, serverOptions = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-mcp-test-'));
   const built = createCanvasServer({
-    env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...env },
+    env: { CANVAS_API_TOKEN: 'test-token-123456', CANVAS_BASE_URL: BASE, CANVAS_DOWNLOAD_DIR: path.join(dir, 'downloads'), CANVAS_TIMEZONE: 'America/New_York', ...(typeof env === 'function' ? env(dir) : env) },
     version: 'test', defaultDownloadDir: path.join(dir, 'downloads'), stateDir: path.join(dir, 'state'),
-    fetchImpl: fakeFetch({ calls, override }), elicitation, ...(log ? { log } : {}),
+    fetchImpl: wrapFetch(fakeFetch({ calls, override })), elicitation, ...(log ? { log } : {}), ...serverOptions,
   });
   const client = new Client({ name: 'test', version: '0' }, { capabilities: clientCapabilities });
   if (onElicit) {
@@ -71,6 +72,16 @@ export async function connect({ env = {}, calls = [], override, clientCapabiliti
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([built.server.connect(a), client.connect(b)]);
   return { client, built, calls, dir, close: async () => { await client.close(); fs.rmSync(dir, { recursive: true, force: true }); } };
+}
+
+/** The token a dry run hands back, for apps that can't ask the user themselves. */
+export const tokenIn = (result) => /confirm_token="([^"]+)"/.exec(result.content?.[0]?.text || '')?.[1];
+
+/** Run a confirm-gated tool the way an app without a dialog must: preview first, then confirm with the token. */
+export async function confirmed(client, name, args) {
+  const first = await client.callTool({ name, arguments: args });
+  const token = tokenIn(first);
+  return token ? client.callTool({ name, arguments: { ...args, confirm: true, confirm_token: token } }) : first;
 }
 
 /** Minimal valid arguments for a tool, from its JSON input schema: required fields only. */
