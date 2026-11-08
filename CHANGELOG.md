@@ -3,7 +3,7 @@
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
 ([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
 
-## Unreleased
+## 1.4.0
 
 ### Security
 - **The public health check says less.** Through your public address, `/healthz` now only says the server is up and how many tools it has. The version and whether sign-in is on are only shown on the computer itself, for `doctor` and `status`.
