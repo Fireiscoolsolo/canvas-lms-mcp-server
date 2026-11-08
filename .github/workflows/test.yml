@@ -34,7 +34,9 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          git clone --quiet --depth 1 --branch "$BRANCH" https://github.com/Fireiscoolsolo/canvas-lms-mcp-local.git ../other 2>/dev/null \n            || git clone --quiet --depth 1 https://github.com/Fireiscoolsolo/canvas-lms-mcp-local.git ../other
+          if git ls-remote --exit-code --heads https://github.com/Fireiscoolsolo/canvas-lms-mcp-local.git "$BRANCH" > /dev/null; then REF="$BRANCH"; else REF=main; fi
+          echo "Comparing with canvas-lms-mcp-local $REF"
+          git clone --quiet --depth 1 --branch "$REF" https://github.com/Fireiscoolsolo/canvas-lms-mcp-local.git ../other
           node ../other/scripts/sync-core.mjs --check .
           cmp scripts/release-check.mjs ../other/scripts/release-check.mjs
 
