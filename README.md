@@ -286,22 +286,22 @@ Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env
 
 | Group | Count | Highlights |
 |---|:-:|---|
-| Identity | 27 | `check_token_expiry`, notification preferences, custom-data storage |
+| Identity | 28 | `list_recent_history`, `check_token_expiry`, notification preferences, custom-data storage |
 | Courses | 17 | `course_contacts` (teachers, TAs, office hours), permissions, nicknames |
 | Assignments | 13 | `assignment_brief`, `list_missing_submissions`, `get_late_policy` |
-| Submissions | 17 | text, URL, file and annotation submission, comments, rubric assessments |
+| Submissions | 18 | `recent_feedback`, text, URL, file and annotation submission, comments, rubric assessments |
 | Grades | 15 | `final_grade_scenarios`, `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa` |
 | Quizzes | 12 | read-only: dates, attempts, reviews |
 | Discussions | 21 | `get_full_topic_view`, replies, school-wide announcements, mark announcements read |
 | Inbox | 14 | messaging, `find_recipients`, threads |
 | Calendar | 11 | events, office-hours booking |
-| Content | 36 | files, pages, modules, captions, ePortfolios, `read_course_file` for PDF, Word and PowerPoint, course export |
+| Content | 37 | `next_module_items`, files, pages, modules, captions, ePortfolios, `read_course_file` for PDF, Word and PowerPoint, course export |
 | Groups | 11 | group workspaces |
 | Rubrics | 11 | peer reviews |
 | Search | 3 | `smart_search` with keyword fallback |
 | Planner | 12 | `daily_briefing`, planner notes, `mark_planner_item_done`, `study_plan`, `export_deadlines_ics`, calendar feed |
-| Planning | 13 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, `semester_wrap_up`, `export_all_courses` |
-| Meta | 4 | `raw_canvas_request` for any endpoint not listed above |
+| Planning | 14 | `find_exams`, `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, `semester_wrap_up`, `export_all_courses` |
+| Meta | 5 | `get_change_log`, `raw_canvas_request` for any endpoint not listed above |
 
 ### Prompts and attachments
 

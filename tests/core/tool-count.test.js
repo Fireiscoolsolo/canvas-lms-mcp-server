@@ -46,6 +46,23 @@ test('every tool count written in this repo matches the tools the server registe
   } finally { await close(); }
 });
 
+test('the count for each tool group in the README and the website matches the server', async () => {
+  const { built, close } = await connect();
+  try {
+    const counts = {};
+    for (const t of built.registry) counts[t.group] = (counts[t.group] || 0) + 1;
+    const wrong = [];
+    for (const place of ['README.md', 'docs/index.html']) {
+      const said = fs.readFileSync(path.join(ROOT, place), 'utf8');
+      const rows = [...said.matchAll(/^\| ([A-Z][a-z]+) \| (\d+) \|/gm), ...said.matchAll(/<b>([A-Z][a-z]+)<\/b><span class="cnt">(\d+)<\/span>/g)];
+      const groups = rows.filter(([, name]) => counts[name.toLowerCase()] !== undefined);
+      assert.equal(groups.length, Object.keys(counts).length, `${place} lists every group once`);
+      for (const [, name, n] of groups) if (counts[name.toLowerCase()] !== Number(n)) wrong.push(`${place}: ${name} says ${n}, the server has ${counts[name.toLowerCase()]}`);
+    }
+    assert.deepEqual(wrong, []);
+  } finally { await close(); }
+});
+
 test('a count that is off is caught', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-count-'));
   try {
