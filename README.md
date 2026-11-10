@@ -113,6 +113,7 @@ That folder is your **settings folder**. It holds your `.env`, logins and logs, 
 | `canvas-lms-mcp-remote totp-setup` / `totp-off` | Turn two-factor codes on or off |
 | `canvas-lms-mcp-remote cluster` | List the computers in your group |
 | `canvas-lms-mcp-remote takeover` | Make this computer the one that serves |
+| `canvas-lms-mcp-remote profile [name]` | Show the [tool profiles](#tool-profiles), or switch to one (then restart) |
 | `canvas-lms-mcp-remote uninstall` | Stop it, remove the startup service and say how to remove the package |
 | `canvas-lms-mcp-remote --stdio` | Serve over stdin/stdout, for directories that inspect servers |
 

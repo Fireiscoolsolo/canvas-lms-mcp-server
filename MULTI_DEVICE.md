@@ -58,6 +58,7 @@ Add an **HTTP** (Streamable HTTP) MCP server named `canvas` with the URL `https:
 | `CANVAS_MCP_PASSWORD` | **Must match** | Otherwise new logins fail whenever the mismatched computer is active |
 | ngrok **account** (authtoken) | **Must match** | A static domain belongs to one ngrok account |
 | `CANVAS_BASE_URL` | Same | Your school |
+| `CANVAS_PROFILE` | Same | Otherwise the tools your apps see change whenever another computer takes over. `doctor` shows each computer's profile |
 | `CANVAS_API_TOKEN` | either | Recommended: a **separate token per computer**, so you can revoke one without breaking the others |
 
 ---
