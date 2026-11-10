@@ -3,7 +3,7 @@ import { matchToken } from '../token-watch.js';
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty, STREAM_FIELDS } = ctx;
+  const { tool, get, canvas, ok, ID, COURSE, LIMIT, API, TOKEN, BASE, localize, omitEmpty, fence, fenceProse, STREAM_FIELDS } = ctx;
 
   const A = 'identity';
 
@@ -96,5 +96,32 @@ export default function register(ctx) {
       frequency: z.enum(PREF_FREQ).describe('"immediately", "daily", "weekly" or "never".'),
     },
     handler: updatePref,
+  });
+
+  tool({
+    name: 'list_recent_history', group: A,
+    description: 'The Canvas pages you opened lately: name, kind, course, link, when, and about how long you spent.',
+    schema: {
+      course_id: COURSE.optional().describe('Only pages in this course.'),
+      limit: z.number().int().positive().max(100).optional().describe('How many to show. Default 25.'),
+    },
+    handler: async (a) => {
+      const limit = a.limit || 25;
+      // This endpoint takes no per_page, so the default page size is left out.
+      const visits = await canvas.paginate('/users/self/history', { per_page: undefined }, { max: a.course_id ? 300 : limit, ttl: 60000, quiet: true });
+      const items = visits
+        .filter((v) => !a.course_id || (v.context_type === 'Course' && String(v.context_id) === String(a.course_id)))
+        .slice(0, limit)
+        .map((v) => omitEmpty({
+          // Page names were written by teachers and classmates.
+          name: v.asset_name ? fence(String(v.asset_name), 'page name') : undefined,
+          kind: v.asset_readable_category, course: v.context_name,
+          course_id: v.context_type === 'Course' ? v.context_id : undefined,
+          when: localize(v.visited_at), visited_at: v.visited_at,
+          minutes: v.interaction_seconds ? Math.max(1, Math.round(v.interaction_seconds / 60)) : undefined,
+          url: v.visited_url,
+        }));
+      return ok(fenceProse({ count: items.length, items }, 'recent history'), items.length ? null : 'Canvas has no recent page visits for you here.');
+    },
   });
 }
