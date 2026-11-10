@@ -5,8 +5,19 @@ import { z } from 'zod';
 
 const say = (text) => ({ messages: [{ role: 'user', content: { type: 'text', text } }] });
 
-/** listCourseNames: async () => string[] of active course names, used to autocomplete course arguments. */
-export function registerPrompts(server, { listCourseNames }) {
+/**
+ * listCourseNames: async () => string[] of active course names, used to autocomplete course arguments.
+ * isOn: (toolName) => whether that tool is registered. A prompt only shows up when every tool it names is on, so a
+ * smaller profile never offers a prompt that sends the AI looking for a tool it doesn't have.
+ * Returns [{ name, needs, on }] for every prompt.
+ */
+export function registerPrompts(server, { listCourseNames, isOn = () => true }) {
+  const list = [];
+  const prompt = (name, needs, config, cb) => {
+    const on = needs.every(isOn);
+    list.push({ name, needs, on });
+    if (on) server.registerPrompt(name, config, cb);
+  };
   const suggestCourses = async (value) => {
     const names = await listCourseNames().catch(() => []);
     const v = String(value || '').toLowerCase();
@@ -15,7 +26,7 @@ export function registerPrompts(server, { listCourseNames }) {
   const course = (description) => completable(z.string().describe(description), suggestCourses);
   const optionalCourse = (description) => completable(z.string().optional().describe(description), suggestCourses);
 
-  server.registerPrompt('plan_my_week', {
+  prompt('plan_my_week', ['get_week_ahead', 'list_missing_submissions', 'deadline_conflict_check'], {
     title: 'Plan my week',
     description: 'A day-by-day plan for the next 7 days from your due dates, missing work and busy days.',
   }, () => say([
@@ -26,7 +37,7 @@ export function registerPrompts(server, { listCourseNames }) {
     '4. End with the 3 most important things to do today.',
   ].join('\n')));
 
-  server.registerPrompt('what_did_i_miss', {
+  prompt('what_did_i_miss', ['diff_since_last_check', 'get_all_unread'], {
     title: 'What did I miss?',
     description: 'New grades, announcements, messages and replies since a few days ago, grouped by course.',
     argsSchema: { days: z.string().optional().describe('How many days back to look. Default 3.') },
@@ -38,7 +49,7 @@ export function registerPrompts(server, { listCourseNames }) {
     'Keep it brief and skip courses with nothing new.',
   ].join('\n')));
 
-  server.registerPrompt('exam_prep', {
+  prompt('exam_prep', ['list_courses', 'syllabus_digest', 'list_modules', 'list_upcoming_assignments', 'read_course_file', 'get_page_content'], {
     title: 'Prep me for an exam',
     description: 'Works out what an exam covers, reads the course material and gives you a summary, practice questions and a study schedule.',
     argsSchema: {
@@ -54,7 +65,7 @@ export function registerPrompts(server, { listCourseNames }) {
     'Only use what is in the course material, and tell me which files or pages each part came from.',
   ].join('\n')));
 
-  server.registerPrompt('grade_check', {
+  prompt('grade_check', ['list_courses', 'get_course_grade_breakdown', 'grade_impact_ranking', 'compute_needed_score', 'get_all_grades', 'calculate_gpa'], {
     title: 'How are my grades?',
     description: 'Your grades, GPA, what is pulling them down and what you need on upcoming work.',
     argsSchema: { course: optionalCourse('Focus on one course. Leave empty for all courses.') },
@@ -71,7 +82,7 @@ export function registerPrompts(server, { listCourseNames }) {
     '3. Show a short table (course, grade, trend if you can tell) and list the top 3 things that would raise my grades fastest.',
   ].join('\n')));
 
-  server.registerPrompt('catch_up_on_course', {
+  prompt('catch_up_on_course', ['list_courses', 'list_announcements', 'get_course_activity_stream', 'list_upcoming_assignments', 'list_missing_submissions', 'list_modules'], {
     title: 'Catch me up on a course',
     description: 'Recent announcements, activity, upcoming and missing work for one course, and what to do next.',
     argsSchema: { course: course('The course to catch up on') },
@@ -84,7 +95,7 @@ export function registerPrompts(server, { listCourseNames }) {
     'Summarize what is going on in a few lines, then give me a short to-do list in order of urgency.',
   ].join('\n')));
 
-  server.registerPrompt('daily_briefing', {
+  prompt('daily_briefing', ['daily_briefing'], {
     title: 'Daily briefing',
     description: 'Today at a glance: classes, what is due today and tomorrow, new grades and anything you should read.',
   }, () => say([
@@ -96,7 +107,7 @@ export function registerPrompts(server, { listCourseNames }) {
     'Keep it short enough to read in 30 seconds.',
   ].join('\n')));
 
-  server.registerPrompt('plan_study_blocks', {
+  prompt('plan_study_blocks', ['study_plan', 'schedule_study_plan'], {
     title: 'Plan my study blocks',
     description: 'Study time blocks for the next two weeks, fitted around your calendar, that you can add to Canvas.',
     argsSchema: {
@@ -114,7 +125,7 @@ export function registerPrompts(server, { listCourseNames }) {
     ].join('\n'));
   });
 
-  server.registerPrompt('start_assignment', {
+  prompt('start_assignment', ['list_courses', 'list_assignments', 'assignment_brief', 'read_course_file'], {
     title: 'Start this assignment',
     description: 'Everything about one assignment in plain words: what to do, how it is graded, what to submit and a plan to finish on time.',
     argsSchema: {
@@ -130,7 +141,7 @@ export function registerPrompts(server, { listCourseNames }) {
     'Do not write the assignment for me; help me understand and plan it.',
   ].join('\n')));
 
-  server.registerPrompt('on_track_to_pass', {
+  prompt('on_track_to_pass', ['get_all_grades', 'list_missing_submissions', 'final_grade_scenarios'], {
     title: 'Am I on track to pass?',
     description: 'Checks every course for risk: current grades, missing work and what you need on the rest to pass.',
     argsSchema: { passing: z.string().optional().describe('The lowest passing percentage. Default 60.') },
@@ -142,7 +153,7 @@ export function registerPrompts(server, { listCourseNames }) {
     '4. For each at-risk course, list the two most useful things to do this week.',
   ].join('\n')));
 
-  server.registerPrompt('email_professor', {
+  prompt('email_professor', ['list_courses', 'course_contacts', 'assignment_brief', 'get_my_submission', 'send_message'], {
     title: 'Draft an email to my professor',
     description: 'A short, polite Canvas message to a teacher about an extension, a grade question or anything else. You review it before anything is sent.',
     argsSchema: {
@@ -157,7 +168,7 @@ export function registerPrompts(server, { listCourseNames }) {
     '4. Show me the draft and wait. Only send it with send_message after I say it is good.',
   ].join('\n')));
 
-  server.registerPrompt('semester_wrap_up', {
+  prompt('semester_wrap_up', ['semester_wrap_up', 'export_all_courses', 'download_all_course_files'], {
     title: 'Semester wrap-up',
     description: 'End-of-term checklist: final grades, anything still missing, and saving your course files before access ends.',
   }, () => say([
@@ -167,4 +178,6 @@ export function registerPrompts(server, { listCourseNames }) {
     '3. Point out any grade that looks worth asking the teacher about.',
     '4. Offer to save copies of my courses with export_all_courses (or download_all_course_files for one course), and do it only if I say yes.',
   ].join('\n')));
+
+  return list;
 }

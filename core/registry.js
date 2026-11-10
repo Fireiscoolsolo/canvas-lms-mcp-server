@@ -75,12 +75,16 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   const LIMIT = z.number().int().positive().optional().describe('Max items to return');
   const PAGE = z.number().int().positive().optional().describe('Page of results');
 
-  function enabled(name, group, write) {
-    if (cfg.profileTools && !cfg.profileTools.has(name)) return false;
-    if (write && !cfg.allowWrites) return false;
-    if (cfg.disabled.has(name) || cfg.disabled.has(group)) return false;
-    if (cfg.tools && !ALWAYS.has(name) && !cfg.tools.has(name) && !cfg.tools.has(group)) return false;
-    return true;
+  // Every tool the settings leave out, with the reason, so search_tools can say what is switched off and how to turn it on.
+  const leftOut = [];
+
+  /** Why a tool is switched off: 'profile', 'writes' (CANVAS_ALLOW_WRITES), 'disabled' (CANVAS_DISABLE_TOOLS), 'filter' (CANVAS_TOOLS), or null. */
+  function whyOff(name, group, write) {
+    if (cfg.profileTools && !cfg.profileTools.has(name)) return 'profile';
+    if (write && !cfg.allowWrites) return cfg.writesSetting ? 'profile' : 'writes';
+    if (cfg.disabled.has(name) || cfg.disabled.has(group)) return 'disabled';
+    if (cfg.tools && !ALWAYS.has(name) && !cfg.tools.has(name) && !cfg.tools.has(group)) return 'filter';
+    return null;
   }
 
   function setupProblem() {
@@ -206,9 +210,14 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   function tool({ name, description, schema = {}, handler, preview, write = false, confirm = false, group = '', offline = false, local = false, output }) {
     known.add(name);
     if (group) known.add(group);
-    if (!enabled(name, group, write)) { skipped++; return; }
-
     const doc = TOOL_DOCS[name] || {};
+    const why = whyOff(name, group, write);
+    if (why) {
+      skipped++;
+      leftOut.push({ name, group, write, confirm: Boolean(confirm), description: doc.description || description, why });
+      return;
+    }
+
     if (doc.description) description = doc.description;
     let shape = documentParams(schema, doc.params);
     let desc = description;
@@ -306,5 +315,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   /** Names in CANVAS_TOOLS and CANVAS_DISABLE_TOOLS that match no tool or group, so they did nothing. */
   const unknownNames = () => [...cfg.disabled, ...(cfg.tools || [])].filter((n) => !known.has(n));
 
-  return { tool, get, registry, skipped: () => skipped, unknownNames, ID, COURSE, LIMIT, PAGE };
+  /** Every tool this server has, on or off. Profile tool counts come from this, so they don't depend on other settings. */
+  const catalog = () => [...registry, ...leftOut];
+
+  return { tool, get, registry, leftOut, catalog, skipped: () => skipped, unknownNames, ID, COURSE, LIMIT, PAGE };
 }
