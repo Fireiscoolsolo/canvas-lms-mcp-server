@@ -1,7 +1,32 @@
 // What the HTTP server refuses to start with. A public address without a real password would put your Canvas on the
 // internet, so these stop it with a clear message instead of carrying on. Used by index.js, supervisor.js and doctor.js.
 // stdio mode skips this: nothing listens on a port there.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { readConfig } from './core/config.js';
+
+const SETTING = { ngrok: 'CANVAS_MCP_NGROK_PATH', cloudflared: 'CANVAS_MCP_CLOUDFLARED_PATH' };
+// Where Homebrew (Apple silicon and Intel), snap, Linuxbrew and hand installs put programs. A launch agent or service
+// can start with a PATH that has none of these, so they're checked whatever PATH says.
+const USUAL = (home) => ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/snap/bin', '/home/linuxbrew/.linuxbrew/bin', path.posix.join(home, '.local', 'bin'), path.posix.join(home, 'bin')];
+
+/**
+ * Where the tunnel program ('ngrok' or 'cloudflared') is: the path in the settings, then on Windows the winget install,
+ * then every folder on PATH and the usual install folders. Returns { path, how }, where how is 'setting', 'found' or
+ * 'missing' (path is then what was tried first).
+ */
+export function findTunnelProgram(kind, { env = process.env, platform = process.platform, exists = fs.existsSync, home = os.homedir() } = {}) {
+  if (env[SETTING[kind]]) return { path: env[SETTING[kind]], how: 'setting' };
+  const windows = platform === 'win32';
+  const p = windows ? path.win32 : path.posix;
+  const file = windows ? `${kind}.exe` : kind;
+  const winget = windows ? p.join(env.LOCALAPPDATA || p.join(home, 'AppData', 'Local'), 'Microsoft', 'WinGet', 'Links', file) : null;
+  const onPath = String(env.PATH || env.Path || '').split(windows ? ';' : ':').filter(Boolean);
+  const candidates = [winget, ...onPath.map((d) => p.join(d, file)), ...(windows ? [] : USUAL(home).map((d) => p.join(d, file)))].filter(Boolean);
+  const found = candidates.find((c) => { try { return exists(c); } catch { return false; } });
+  return found ? { path: found, how: 'found' } : { path: winget || kind, how: 'missing' };
+}
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const EXAMPLE_VALUE = /^(paste_your|choose_a|generate_a)/; // the words .env.example ships with

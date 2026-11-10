@@ -3,6 +3,16 @@
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
 ([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
 
+## Unreleased
+
+### Fixed
+- **Remote works with ngrok on a Mac or Linux without a setting.** It only looked for ngrok where winget puts it on Windows, so on a Mac it didn't start unless `CANVAS_MCP_NGROK_PATH` was set. It now also looks on `PATH` and in the folders Homebrew, snap and the usual installers use, even when the server starts with a bare `PATH`. cloudflared is found the same way.
+- `doctor` checks for the tunnel program where the server really looks, and says how to install it on Windows, a Mac or Linux. Before, it told a Mac it was using ngrok from `PATH` when the server wasn't.
+- The README has Mac and Linux steps for installing ngrok and cloudflared.
+
+### Releases
+- Every change is now also tested on macOS.
+
 ## 1.4.0
 
 ### Security

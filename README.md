@@ -123,18 +123,27 @@ From source, use `node cli.js <command>` instead.
 In Canvas, go to **Account → Settings → Approved Integrations → + New Access Token**. Canvas only shows the token once, so copy it right away.
 
 ### 3. Set up a tunnel
-**ngrok (default):**
+**ngrok (default).** On Windows:
 ```powershell
 winget install --id Ngrok.Ngrok -e
 ngrok update                                   # the winget version is often too old (ERR_NGROK_121)
 ngrok config add-authtoken <your-ngrok-authtoken>
 ```
+On a Mac, with [Homebrew](https://brew.sh):
+```bash
+brew install ngrok
+ngrok config add-authtoken <your-ngrok-authtoken>
+```
+On Linux, install it from [ngrok's download page](https://ngrok.com/download), then run the same `ngrok config add-authtoken` line.
+
+The server finds ngrok by itself: the winget install on Windows, and on a Mac or Linux your `PATH` plus the folders Homebrew, snap and the usual installers use. If yours is somewhere else, put its full path in `CANVAS_MCP_NGROK_PATH`.
+
 Then claim your free **static domain** in the [ngrok dashboard](https://dashboard.ngrok.com), e.g. `your-name.ngrok-free.dev`.
 
 <details>
 <summary><b>Or Cloudflare Tunnel (no "Visit Site" page, your own domain)</b></summary>
 
-1. Install `cloudflared` ([downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/); on Windows `winget install --id Cloudflare.cloudflared`).
+1. Install `cloudflared` ([downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/); on Windows `winget install --id Cloudflare.cloudflared`, on a Mac `brew install cloudflared`). The server finds it the same way as ngrok, or set `CANVAS_MCP_CLOUDFLARED_PATH`.
 2. In the Cloudflare dashboard, open **Zero Trust → Networks → Tunnels**, create a tunnel and copy its **token**.
 3. Add a **public hostname** to the tunnel, e.g. `canvas.yourdomain.com`, pointing at `http://localhost:3939`.
 4. In `.env`, set `CANVAS_MCP_TUNNEL=cloudflared`, `CANVAS_MCP_CLOUDFLARED_TOKEN=<token>` and `CANVAS_MCP_PUBLIC_URL=https://canvas.yourdomain.com`.
@@ -244,7 +253,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_IP_FAMILY` | | both | `4` or `6` uses only that kind of address. Worth trying if new connections time out |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
-| `CANVAS_MCP_NGROK_PATH` | | winget path | Path to `ngrok.exe` |
+| `CANVAS_MCP_NGROK_PATH` | | found by itself | Full path to ngrok, if the server can't find it (it looks in the winget install on Windows, and on `PATH` and in the Homebrew, snap and usual install folders elsewhere) |
 | `CANVAS_MCP_TRUST_PROXY` | | `loopback` | Which proxy's visitor address to trust; Docker uses `uniquelocal` |
 | `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
 

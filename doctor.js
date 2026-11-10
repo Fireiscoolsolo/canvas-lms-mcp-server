@@ -9,7 +9,7 @@ import { matchToken, daysLeft } from './core/token-watch.js';
 import { normalizeBase } from './core/canvas-client.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings, checkConnections, reportConnections } from './core/network.js';
-import { startupProblems } from './startup-check.js';
+import { startupProblems, findTunnelProgram } from './startup-check.js';
 
 const REQUIRED = {
   CANVAS_API_TOKEN: 'your Canvas token (Canvas > Account > Settings > + New Access Token)',
@@ -82,12 +82,21 @@ export async function runDoctor({ dir, version, fetchImpl = fetch, service = ser
 
   console.log('\nTunnel:');
   const tunnel = String(env.CANVAS_MCP_TUNNEL || 'ngrok').toLowerCase();
+  // The same search the supervisor makes: the setting, the winget install on Windows, then PATH and the usual folders.
+  const findProgram = (kind) => {
+    const r = findTunnelProgram(kind, { env: { ...process.env, ...env } });
+    const setting = kind === 'ngrok' ? 'CANVAS_MCP_NGROK_PATH' : 'CANVAS_MCP_CLOUDFLARED_PATH';
+    const install = { win32: `winget install ${kind === 'ngrok' ? 'ngrok.ngrok' : 'Cloudflare.cloudflared'}`, darwin: `brew install ${kind}` }[process.platform]
+      || `the download page (${kind === 'ngrok' ? 'https://ngrok.com/download' : 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'})`;
+    if (r.how === 'missing') bad(`${kind} wasn't found`, `Install it with ${install}, or put its full path in ${setting}.`);
+    else if (r.how === 'setting' && !fs.existsSync(r.path)) bad(`${kind} wasn't found at ${r.path} (${setting})`, `Fix ${setting}, or remove it so the server looks for ${kind} itself.`);
+    else good(`${kind} found at ${r.path}`);
+  };
   if (tunnel === 'ngrok') {
-    const ngrok = env.CANVAS_MCP_NGROK_PATH || path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'ngrok.exe');
-    if (process.platform !== 'win32' && !env.CANVAS_MCP_NGROK_PATH) note('Using "ngrok" from your PATH');
-    else if (fs.existsSync(ngrok)) good(`ngrok found at ${ngrok}`); else bad(`ngrok wasn't found at ${ngrok}`, 'Install it (winget install ngrok.ngrok) or set CANVAS_MCP_NGROK_PATH.');
+    findProgram('ngrok');
     if (ngrokAuthConfigured()) good('ngrok is signed in (authtoken set)'); else bad('ngrok has no authtoken', 'Run: ngrok config add-authtoken <your token from dashboard.ngrok.com>');
   } else if (tunnel === 'cloudflared') {
+    findProgram('cloudflared');
     if (env.CANVAS_MCP_CLOUDFLARED_TOKEN) good('Cloudflare Tunnel token is set'); else bad('CANVAS_MCP_CLOUDFLARED_TOKEN is not set', 'Copy the tunnel token from the Cloudflare dashboard (Zero Trust > Networks > Tunnels).');
   } else {
     note('No tunnel (CANVAS_MCP_TUNNEL=none): your public address must reach this computer some other way.');

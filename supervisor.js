@@ -41,7 +41,7 @@
  *
  * Settings (.env): CANVAS_MCP_PUBLIC_URL and CANVAS_MCP_CLUSTER_SECRET (required, same on every machine),
  *   CANVAS_MCP_TUNNEL            ngrok (default) | cloudflared | none (you route the public address yourself)
- *   CANVAS_MCP_NGROK_PATH        where ngrok.exe is, if not the winget default
+ *   CANVAS_MCP_NGROK_PATH        where ngrok is, if the server can't find it (winget on Windows, Homebrew or PATH elsewhere)
  *   CANVAS_MCP_CLOUDFLARED_TOKEN the tunnel token from the Cloudflare dashboard (CANVAS_MCP_TUNNEL=cloudflared)
  *   CANVAS_MCP_CLOUDFLARED_PATH  where cloudflared is, if not on PATH
  *   CANVAS_MCP_FAILOVER_SECONDS  how long the active computer can be silent before a standby takes over. Default 50
@@ -58,7 +58,7 @@ import { createRotatingLog } from './log-file.js';
 import { redact } from './core/text.js';
 import { ipFamilyFrom } from './core/config.js';
 import { applyNetworkSettings } from './core/network.js';
-import { startupProblems } from './startup-check.js';
+import { startupProblems, findTunnelProgram } from './startup-check.js';
 import { saveStoreCopy } from './oauth-provider.js';
 
 dotenv.config({ quiet: true });
@@ -71,11 +71,10 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), '
 const argValue = (name) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const LOG_FILE = argValue('--log-file') || process.env.CANVAS_MCP_LOG_FILE || '';
 const TUNNEL = String(process.env.CANVAS_MCP_TUNNEL || 'ngrok').toLowerCase();
-// Auto-detect rather than hardcode a username: winget always shims CLI tools
-// under the CURRENT user's %LOCALAPPDATA%, which differs per machine/account.
-const NGROK = process.env.CANVAS_MCP_NGROK_PATH
-  || path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'ngrok.exe');
-const CLOUDFLARED = process.env.CANVAS_MCP_CLOUDFLARED_PATH || 'cloudflared';
+// The tunnel program: the path in .env, the winget install on Windows, or PATH and the folders Homebrew and the usual
+// installers use on a Mac or Linux. If it isn't anywhere, the first place tried is logged when it fails to start.
+const NGROK = findTunnelProgram('ngrok').path;
+const CLOUDFLARED = findTunnelProgram('cloudflared').path;
 const CLOUDFLARED_TOKEN = process.env.CANVAS_MCP_CLOUDFLARED_TOKEN || '';
 const PUBLIC_URL = (process.env.CANVAS_MCP_PUBLIC_URL || '').replace(/\/+$/, '');
 const CLUSTER_SECRET = process.env.CANVAS_MCP_CLUSTER_SECRET || '';
