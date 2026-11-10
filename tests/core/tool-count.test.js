@@ -7,11 +7,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './fake-canvas.js';
+import { profileTable, START, END, PLACES as TABLE_PLACES } from '../../scripts/profile-table.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PLACES = ['README.md', 'docs/index.html', 'package.json', 'server.json', 'mcpb/manifest.json', 'glama.json'];
-// An exact count: "237 tools" or "237 student tools". "About 50 tools" for the core profile is left alone on purpose.
+// An exact count: "237 tools" or "237 student tools". "About 50 tools" is left alone on purpose.
 const COUNT = /(?<!about )\b(\d{2,4}) (?:student )?tools\b/gi;
+// The profile table holds the smaller counts; it has its own check below.
+const TABLE = new RegExp(`${START}[\\s\\S]*?${END}`, 'g');
 
 /** Every written count in `root` that isn't `count`, as "file: number". */
 function wrongCounts(root, count) {
@@ -19,10 +22,20 @@ function wrongCounts(root, count) {
   for (const place of PLACES) {
     const file = path.join(root, place);
     if (!fs.existsSync(file)) continue;
-    for (const m of fs.readFileSync(file, 'utf8').matchAll(COUNT)) if (Number(m[1]) !== count) wrong.push(`${place}: ${m[0]}`);
+    for (const m of fs.readFileSync(file, 'utf8').replace(TABLE, '').matchAll(COUNT)) if (Number(m[1]) !== count) wrong.push(`${place}: ${m[0]}`);
   }
   return wrong;
 }
+
+test('the profile table in the README and the website matches the real profiles', () => {
+  const { markdown, html } = profileTable();
+  for (const place of TABLE_PLACES) {
+    const said = fs.readFileSync(path.join(ROOT, place), 'utf8').replace(/\r\n/g, '\n');
+    const blocks = [...said.matchAll(new RegExp(`${START}\\n([\\s\\S]*?)\\n\\s*${END}`, 'g'))].map((m) => m[1]);
+    assert.ok(blocks.length > 0, `${place} needs the profile table between ${START} and ${END}`);
+    for (const b of blocks) assert.equal(b, place.endsWith('.md') ? markdown : html, `${place} is out of date: run node scripts/profile-table.mjs --write`);
+  }
+});
 
 test('every tool count written in this repo matches the tools the server registers', async () => {
   const { built, close } = await connect();

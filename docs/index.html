@@ -369,12 +369,25 @@ ngrok config add-authtoken &lt;same authtoken as computer A&gt;</pre>
     <tr><td><code>CANVAS_MCP_PASSWORD</code> <span class="tag">remote</span></td><td>—</td><td>Password for the login page</td></tr>
     <tr><td><code>CANVAS_MCP_CLUSTER_SECRET</code> <span class="tag">remote</span></td><td>—</td><td>Protects the supervisor's internal endpoints</td></tr>
     <tr><td><code>CANVAS_ALLOW_WRITES</code></td><td><code>true</code></td><td><code>false</code> = read-only mode</td></tr>
-    <tr><td><code>CANVAS_PROFILE</code></td><td><code>full</code></td><td><code>core</code> = curated subset of tools</td></tr>
+    <tr><td><code>CANVAS_PROFILE</code></td><td><code>full</code></td><td>Which tools to turn on, by name or number (see below)</td></tr>
     <tr><td><code>CANVAS_CACHE_TTL</code></td><td><code>60</code></td><td>Response cache time in seconds</td></tr>
     <tr><td><code>CANVAS_TIMEZONE</code></td><td>system</td><td>Time zone for due-date math</td></tr>
     <tr><td><code>CANVAS_DOWNLOAD_DIR</code></td><td><code>./canvas-downloads</code></td><td>Where downloads are saved</td></tr>
     <tr><td><code>CANVAS_MCP_PORT</code></td><td><code>3939</code></td><td>Local port</td></tr>
   </table></div>
+  <h3 id="profiles" style="margin-top:28px">Tool profiles</h3>
+  <p class="sub">Fewer tools can help an AI app pick the right one. Set <code>CANVAS_PROFILE</code> in <code>.env</code> to a name or number, such as <code>CANVAS_PROFILE=study</code> or <code>3</code>, then run <code>canvas-lms-mcp-remote restart</code>. Not set means <code>full</code>. Use the same profile on every computer. Names other than <code>full</code> and <code>core</code> need version 1.5.0 or newer.</p>
+  <!-- profiles:start -->
+<div class="tbl"><table>
+    <tr><th>Number</th><th>Name</th><th>What it's for</th><th>Tools</th></tr>
+    <tr><td>1</td><td><code>essentials</code></td><td>The daily basics: what's due, your grades, announcements and reading an assignment. Nothing here changes Canvas. Best for small local models.</td><td>24</td></tr>
+    <tr><td>2</td><td><code>core</code></td><td>A bit of everything, including turning in work and sending messages.</td><td>49</td></tr>
+    <tr><td>3</td><td><code>study</code></td><td>Planning your week and studying: planner, calendar, study plans, course files and pages.</td><td>36</td></tr>
+    <tr><td>4</td><td><code>grades</code></td><td>Grades and feedback: scores, what-if, what you need on the final, rubrics and comments.</td><td>30</td></tr>
+    <tr><td>5</td><td><code>readonly</code></td><td>Everything that only looks. Nothing in Canvas can change.</td><td>172</td></tr>
+    <tr><td>6</td><td><code>full</code></td><td>Every tool. The default.</td><td>237</td></tr>
+  </table></div>
+  <!-- profiles:end -->
 </div></section>
 
 <section id="tools"><div class="wrap">

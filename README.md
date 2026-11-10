@@ -245,7 +245,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_CLOUDFLARED_TOKEN` | | — | Tunnel token from the Cloudflare dashboard |
 | `CANVAS_MCP_FAILOVER_SECONDS` | | `50` | How long the serving computer can be silent before another takes over |
 | `CANVAS_ALLOW_WRITES` | | `true` | `false` (or `0`, `no`, `off`) = nothing in Canvas can change. A value it can't read stops the server |
-| `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools. A value it can't read stops the server |
+| `CANVAS_PROFILE` | | `full` | Which tools to turn on, by name or number: see [Tool profiles](#tool-profiles). A value it can't read stops the server |
 | `CANVAS_TOOLS` / `CANVAS_DISABLE_TOOLS` | | all / — | Only these tool groups or tools, or leave these out |
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
 | `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
@@ -258,6 +258,27 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_TRANSPORT` | | `http` | `stdio` (or the `--stdio` flag) serves over stdin/stdout instead of HTTP. Used by directories that inspect servers. For everyday local use, see the [Local Edition](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local) |
 
 Phone-alert settings are listed in [Phone alerts](#phone-alerts).
+
+### Tool profiles
+
+Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env` to a name or number, such as `CANVAS_PROFILE=study` or `CANVAS_PROFILE=3`, then run `canvas-lms-mcp-remote restart`. Or run `canvas-lms-mcp-remote profile study`: it checks the name, backs up `.env` and saves it.
+
+<!-- profiles:start -->
+| Number | Name | What it's for | Tools |
+|:-:|---|---|:-:|
+| 1 | `essentials` | The daily basics: what's due, your grades, announcements and reading an assignment. Nothing here changes Canvas. Best for small local models. | 24 |
+| 2 | `core` | A bit of everything, including turning in work and sending messages. | 49 |
+| 3 | `study` | Planning your week and studying: planner, calendar, study plans, course files and pages. | 36 |
+| 4 | `grades` | Grades and feedback: scores, what-if, what you need on the final, rubrics and comments. | 30 |
+| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 172 |
+| 6 | `full` | Every tool. The default. | 237 |
+<!-- profiles:end -->
+
+- Not set means `full`: every tool, as before.
+- `CANVAS_TOOLS` and `CANVAS_DISABLE_TOOLS` narrow any profile further. They never add a tool the profile leaves out.
+- `essentials` and `readonly` never change anything in Canvas, even with `CANVAS_ALLOW_WRITES=true`. `CANVAS_ALLOW_WRITES=false` turns changes off in every profile.
+- Use the same profile on every computer in a group, or the tools change when another computer takes over.
+- Names other than `full` and `core` need version 1.5.0 or newer. An older version can't read them and won't start.
 
 ## Tools
 

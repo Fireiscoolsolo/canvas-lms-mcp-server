@@ -36,6 +36,13 @@
           "isRequired": true,
           "isSecret": false,
           "format": "string"
+        },
+        {
+          "name": "CANVAS_PROFILE",
+          "description": "Optional. Which tools to turn on, by name or number: 1 essentials, 2 core, 3 study, 4 grades, 5 readonly, 6 full. Not set means full, every tool",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
         }
       ]
     }
