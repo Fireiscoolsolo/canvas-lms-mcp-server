@@ -9,7 +9,7 @@ import { PROFILES, resolveProfile } from '../../core/profiles.js';
 const text = (r) => (r.content || []).map((c) => c.text || '').join('\n');
 
 // How many tools each profile turns on. Changing one means re-making the profile tables in the READMEs and websites.
-const COUNTS = { essentials: 24, core: 49, study: 37, grades: 31, readonly: 174, full: 239 };
+const COUNTS = { essentials: 24, core: 49, study: 38, grades: 31, readonly: 175, full: 240 };
 
 // The core profile as 1.3.0 shipped it, written out again so it can never drift.
 const CORE = [

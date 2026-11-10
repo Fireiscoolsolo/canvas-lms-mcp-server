@@ -12,7 +12,7 @@ test('every tool runs against a fake Canvas without crashing', { timeout: 120000
   const { client, dir, close } = await connect({ calls });
   try {
     const { tools } = await client.listTools();
-    assert.ok(tools.length >= 239, `expected at least 239 tools, got ${tools.length}`);
+    assert.ok(tools.length >= 240, `expected at least 240 tools, got ${tools.length}`);
     const crashes = [];
     for (const t of tools) {
       const args = sampleArgs(t.inputSchema, dir);
@@ -271,6 +271,32 @@ test('next_module_items finds where you are in a course and what each next item 
     assert.deepEqual([c.next[0].module_id, c.next[0].item_id], ['11', '111'], 'IDs to pass to mark_module_item_done');
     assert.ok(calls.some((x) => x.path === '/courses/1/modules/12/items'), 'a module listed without its items is asked for them');
     assert.ok(!calls.some((x) => x.path === '/courses/1/modules/10/items'), 'a finished module is not');
+  } finally { await close(); }
+});
+
+test('find_exams picks exams by name, group and calendar, says why, and skips a final project', async () => {
+  const asg = (id, name, days, points, group) => ({ id, name, due_at: daysAgo(-days), points_possible: points, assignment_group_id: group, html_url: `/courses/1/assignments/${id}` });
+  const { client, close } = await connect({
+    override: (method, p) => {
+      if (p === '/courses/1/assignments') return { body: [asg('1', 'Midterm Exam', 10, 100, '5'), asg('2', 'HW 3', 3, 10, '6'), asg('3', 'Final Project', 20, 50, '6'), asg('4', 'Chapter 4 check', 5, 20, '7'), asg('5', 'Old Test', -5, 50, '7')] };
+      if (p === '/courses/1/assignment_groups') return { body: [{ id: '5', name: 'Midterm', group_weight: 30 }, { id: '6', name: 'Homework', group_weight: 50 }, { id: '7', name: 'Tests', group_weight: 20 }] };
+      if (p === '/courses/1/quizzes') return { status: 404, body: { errors: [{ message: 'not found' }] } };
+      if (p === '/calendar_events') return { body: [{ id: '9', title: 'Final Exam', start_at: daysAgo(-30), context_code: 'course_1', description: 'Room 101' }] };
+      return null;
+    },
+  });
+  try {
+    const r = answer(await client.callTool({ name: 'find_exams', arguments: { course_id: '1' } }));
+    const titles = r.exams.map((e) => e.title);
+    assert.deepEqual(titles, ['Chapter 4 check', 'Midterm Exam', 'Final Exam'], 'soonest first');
+    const mid = r.exams.find((e) => e.title === 'Midterm Exam');
+    assert.match(mid.why.join(' '), /its name says "Midterm"/);
+    assert.match(mid.share_of_grade, /30%/);
+    assert.equal(mid.points_possible, 100);
+    assert.match(r.exams[0].why.join(' '), /Tests/, 'picked because of its group');
+    assert.match(r.exams[2].why.join(' '), /calendar/i);
+    assert.ok(!titles.includes('Final Project') && !titles.includes('HW 3') && !titles.includes('Old Test'));
+    assert.match(r.note, /syllabus/i);
   } finally { await close(); }
 });
 

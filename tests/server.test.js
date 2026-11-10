@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const EXPECTED_TOOLS = 239;
+const EXPECTED_TOOLS = 240;
 
 test('server starts over stdio and lists all tools', { timeout: 30000 }, async () => {
   const child = spawn(process.execPath, [path.join(ROOT, 'index.js')], {

@@ -243,6 +243,90 @@ export default function register(ctx) {
     },
   });
 
+  // Names that usually mean an exam. "Final" on its own counts, but not a final project, paper or presentation.
+  const EXAM_WORDS = /\b(exams?|examination|mid-?terms?|mid term|prelims?|tests?)\b/i;
+  const FINAL_EXAM = /\bfinals?\b(?!\s+(project|paper|essay|presentation|report|draft|portfolio|reflection|video|lab))/i;
+  const examWord = (text) => (EXAM_WORDS.exec(String(text || '')) || FINAL_EXAM.exec(String(text || '')))?.[0] || null;
+  const sum = (xs) => xs.reduce((s, x) => s + Number(x || 0), 0);
+  const round = (n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
+
+  tool({
+    name: 'find_exams', group: N,
+    description: 'Finds upcoming exams, midterms, finals and tests in your assignments, quizzes and course calendars, with the date, points, how much of your grade each is and why it was picked. A best guess: check the syllabus.',
+    schema: {
+      course_id: COURSE.optional().describe('Only this course. Leave empty for your active courses.'),
+      days: z.number().int().positive().max(180).optional().describe('How many days ahead to look. Default 60.'),
+    },
+    handler: async (a, { progress }) => {
+      const days = a.days || 60;
+      const now = Date.now();
+      const end = now + days * 86400000;
+      const ahead = (t) => Boolean(t) && Date.parse(t) >= now && Date.parse(t) <= end;
+      const courses = (a.course_id ? [await canvas.get(`/courses/${a.course_id}`, null, { ttl: 300000 })] : await activeCourses(40)).slice(0, 12);
+      const names = new Map(courses.map((c) => [String(c.id), c.name]));
+      const seenIn = new Map(); // course id -> titles and days already listed, so a calendar copy isn't listed twice
+      const exams = [];
+      for (const [i, c] of courses.entries()) {
+        progress(i, courses.length + 1, `Looking for exams in ${c.name || c.id}`);
+        const all = await canvas.paginate(`/courses/${c.id}/assignments`, { per_page: 100 }, { max: 400, ttl: 300000 }).catch(() => []);
+        const groups = await canvas.paginate(`/courses/${c.id}/assignment_groups`, null, { max: 50, ttl: 300000 }).catch(() => []);
+        const quizzes = await canvas.paginate(`/courses/${c.id}/quizzes`, null, { max: 100, ttl: 300000 }).catch(() => []);
+        const byGroup = new Map(groups.map((g) => [String(g.id), g]));
+        const weighted = c.apply_assignment_group_weights ?? groups.some((g) => Number(g.group_weight) > 0);
+        const counted = all.filter((x) => !x.omit_from_final_grade && Number(x.points_possible) > 0);
+        const groupPoints = (gid) => sum(counted.filter((x) => String(x.assignment_group_id) === String(gid)).map((x) => x.points_possible));
+        const totalPoints = sum(counted.map((x) => x.points_possible));
+        const share = (x) => {
+          const pts = Number(x.points_possible);
+          if (!(pts > 0)) return undefined;
+          const g = byGroup.get(String(x.assignment_group_id));
+          if (weighted && g && Number(g.group_weight) > 0 && groupPoints(g.id) > 0) return `about ${round((g.group_weight * pts) / groupPoints(g.id))}% of your grade (the ${g.name} group is ${round(g.group_weight)}%)`;
+          if (!weighted && totalPoints > 0) return `about ${round((pts / totalPoints) * 100)}% of your points`;
+          return undefined;
+        };
+        const seen = new Set();
+        seenIn.set(String(c.id), seen);
+        for (const x of all) {
+          if (!ahead(x.due_at)) continue;
+          const g = byGroup.get(String(x.assignment_group_id));
+          const why = [];
+          const word = examWord(x.name);
+          if (word) why.push(`its name says "${word}"`);
+          if (g && examWord(g.name)) why.push(`it's in the "${g.name}" group`);
+          if (!why.length) continue;
+          seen.add(`${String(x.name).toLowerCase()}|${x.due_at.slice(0, 10)}`);
+          if (x.quiz_id) seen.add(`quiz:${x.quiz_id}`);
+          exams.push(omitEmpty({ course: c.name, course_id: c.id, title: x.name, kind: 'assignment', when: localize(x.due_at), due_at: x.due_at, in: relativeDue(x.due_at), points_possible: x.points_possible, share_of_grade: share(x), why, assignment_id: x.id, url: x.html_url }));
+        }
+        for (const q of quizzes) {
+          const word = examWord(q.title);
+          if (!word || !ahead(q.due_at) || seen.has(`quiz:${q.id}`) || (q.assignment_id && all.some((x) => String(x.id) === String(q.assignment_id)))) continue;
+          seen.add(`${String(q.title).toLowerCase()}|${q.due_at.slice(0, 10)}`);
+          exams.push(omitEmpty({ course: c.name, course_id: c.id, title: q.title, kind: 'quiz', when: localize(q.due_at), due_at: q.due_at, in: relativeDue(q.due_at), points_possible: q.points_possible, time_limit_minutes: q.time_limit, why: [`its quiz name says "${word}"`], url: q.html_url }));
+        }
+      }
+      // Course calendars, at most 10 courses a request, as Canvas allows.
+      progress(courses.length, courses.length + 1, 'Checking course calendars');
+      const codes = courses.map((c) => `course_${c.id}`);
+      for (let i = 0; i < codes.length; i += 10) {
+        const events = await canvas.paginate('/calendar_events', { type: 'event', context_codes: codes.slice(i, i + 10), start_date: new Date(now).toISOString(), end_date: new Date(end).toISOString() }, { max: 300, ttl: 300000 }).catch(() => []);
+        for (const e of events) {
+          const word = examWord(e.title);
+          const id = String(e.context_code || '').replace(/^course_/, '');
+          const seen = seenIn.get(id);
+          if (!word || !ahead(e.start_at) || !seen || seen.has(`${String(e.title).toLowerCase()}|${e.start_at.slice(0, 10)}`)) continue;
+          exams.push(omitEmpty({ course: names.get(id), course_id: id, title: e.title, kind: 'calendar event', when: localize(e.start_at), due_at: e.start_at, in: relativeDue(e.start_at), where: e.location_name, why: [`a course calendar event is called "${e.title}"`], url: e.html_url }));
+        }
+      }
+      progress(courses.length + 1, courses.length + 1);
+      exams.sort((x, y) => Date.parse(x.due_at) - Date.parse(y.due_at));
+      return ok(fenceProse({
+        looked_ahead_days: days, courses_checked: courses.length, found: exams.length, exams,
+        note: 'This is a best guess from names, assignment groups and course calendars, so it can miss an exam or include something that isn\'t one. Check your syllabus for the real dates.',
+      }, 'exam search'));
+    },
+  });
+
   tool({
     name: 'download_all_course_files', group: N, local: true,
     description: 'Bulk download every file you can access in a course to local disk. Can be a lot of requests and a lot of megabytes.',
