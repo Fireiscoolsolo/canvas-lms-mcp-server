@@ -274,7 +274,7 @@ test('HTTP with sign-in on: status page, cluster heartbeats and a health check t
     assert.deepEqual(members.map((m) => m.state), ['active', 'standby']);
     assert.equal(members[1].hostname, 'laptop-2');
     const status = await jsonOf(await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: secret }));
-    assert.equal(status.tools, 237);
+    assert.equal(status.tools, 238);
     assert.deepEqual(status.sessions, []);
     assert.ok(!JSON.stringify(status).includes('a-long-test-password') && !JSON.stringify(status).includes('test-token'));
     const meta = await jsonOf(await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`, { headers: h }));

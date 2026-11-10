@@ -58,7 +58,7 @@ export const PROFILES = Object.freeze([
       'get_rubric_assessment', 'list_submission_comments', 'get_all_grades', 'calculate_gpa', 'get_course_grade_breakdown',
       'what_if_grade', 'reset_what_if_grades', 'get_grading_standard', 'list_grading_periods', 'compute_needed_score',
       'grade_impact_ranking', 'get_grade_trend', 'final_grade_scenarios', 'get_rubric', 'get_my_rubric_assessment',
-      'course_health_check', 'semester_snapshot',
+      'course_health_check', 'semester_snapshot', 'recent_feedback',
     ],
   },
   {

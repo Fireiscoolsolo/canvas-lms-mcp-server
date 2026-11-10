@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 237 tools, with no tunnel, no password and a one-command setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 238 tools, with no tunnel, no password and a one-command setup.
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
-237 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
+238 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
 
 [![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
@@ -68,7 +68,7 @@
           │  HTTPS + OAuth
           ▼
    your-domain.ngrok-free.dev ──►  supervisor.js  ──►  index.js (127.0.0.1:3939/mcp)  ──►  Canvas API
-   (or a Cloudflare hostname)      (keeps it alive,     (237 tools, OAuth, status page,
+   (or a Cloudflare hostname)      (keeps it alive,     (238 tools, OAuth, status page,
                                     failover)            phone alerts)
 ```
 
@@ -270,9 +270,9 @@ Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env
 | 1 | `essentials` | The daily basics: what's due, your grades, announcements and reading an assignment. Nothing here changes Canvas. Best for small local models. | 24 |
 | 2 | `core` | A bit of everything, including turning in work and sending messages. | 49 |
 | 3 | `study` | Planning your week and studying: planner, calendar, study plans, course files and pages. | 36 |
-| 4 | `grades` | Grades and feedback: scores, what-if, what you need on the final, rubrics and comments. | 30 |
-| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 172 |
-| 6 | `full` | Every tool. The default. | 237 |
+| 4 | `grades` | Grades and feedback: scores, what-if, what you need on the final, rubrics and comments. | 31 |
+| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 173 |
+| 6 | `full` | Every tool. The default. | 238 |
 <!-- profiles:end -->
 
 - Not set means `full`: every tool, as before.

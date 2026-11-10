@@ -9,7 +9,7 @@ import { PROFILES, resolveProfile } from '../../core/profiles.js';
 const text = (r) => (r.content || []).map((c) => c.text || '').join('\n');
 
 // How many tools each profile turns on. Changing one means re-making the profile tables in the READMEs and websites.
-const COUNTS = { essentials: 24, core: 49, study: 36, grades: 30, readonly: 172, full: 237 };
+const COUNTS = { essentials: 24, core: 49, study: 36, grades: 31, readonly: 173, full: 238 };
 
 // The core profile as 1.3.0 shipped it, written out again so it can never drift.
 const CORE = [
@@ -189,7 +189,7 @@ test('test_connection reports the profile too', async () => {
 });
 
 test('the instructions name a smaller profile in one short sentence, and stay short', async () => {
-  for (const [env, want] of [[{ CANVAS_PROFILE: 'study' }, /Study and planning.*36 tools.*search_tools/], [{ CANVAS_PROFILE: 'readonly' }, /Read only.*172 tools/]]) {
+  for (const [env, want] of [[{ CANVAS_PROFILE: 'study' }, new RegExp(`Study and planning.*${COUNTS.study} tools.*search_tools`)], [{ CANVAS_PROFILE: 'readonly' }, new RegExp(`Read only.*${COUNTS.readonly} tools`)]]) {
     const { client, close } = await connect({ env });
     try {
       const said = client.getInstructions();

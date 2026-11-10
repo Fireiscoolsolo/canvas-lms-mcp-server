@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Fireiscoolsolo/canvas-lms-mcp-server",
-  "description": "Self-hosted Canvas LMS for every device: 237 student tools over HTTP with OAuth and phone alerts.",
+  "description": "Self-hosted Canvas LMS for every device: 238 student tools over HTTP with OAuth and phone alerts.",
   "repository": {
     "url": "https://github.com/Fireiscoolsolo/canvas-lms-mcp-server",
     "source": "github"
