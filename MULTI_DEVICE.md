@@ -201,7 +201,7 @@ Then confirm the public address answers:
 Invoke-RestMethod https://<your-domain>/healthz -Headers @{ 'ngrok-skip-browser-warning' = '1' }
 ```
 
-Expected: `ok: True`, `tools: 241`, `auth_enabled: True`.
+Expected: `ok: True`, `tools: 242`, `auth_enabled: True`.
 
 `canvas-lms-mcp-remote cluster` (from any computer's settings folder) lists every computer and which one is serving, and the status page at `https://<your-domain>/status` shows the same. To move serving to the computer you're on, run `canvas-lms-mcp-remote takeover`. To make failover faster or slower, set `CANVAS_MCP_FAILOVER_SECONDS` (default 50) in every computer's `.env`.
 

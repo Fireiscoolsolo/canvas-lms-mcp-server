@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 241 tools, with no tunnel, no password and a one-command setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 242 tools, with no tunnel, no password and a one-command setup.
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
-241 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
+242 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
 
 [![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
@@ -68,7 +68,7 @@
           │  HTTPS + OAuth
           ▼
    your-domain.ngrok-free.dev ──►  supervisor.js  ──►  index.js (127.0.0.1:3939/mcp)  ──►  Canvas API
-   (or a Cloudflare hostname)      (keeps it alive,     (241 tools, OAuth, status page,
+   (or a Cloudflare hostname)      (keeps it alive,     (242 tools, OAuth, status page,
                                     failover)            phone alerts)
 ```
 
@@ -251,6 +251,7 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
 | `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
 | `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files. They can't save anywhere outside it |
+| `CANVAS_CHANGE_LOG` | | `on` | `off` stops keeping the list of what the server changed in Canvas (`get_change_log`). It keeps IDs only, never what you wrote |
 | `CANVAS_IP_FAMILY` | | both | `4` or `6` uses only that kind of address. Worth trying if new connections time out |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
@@ -271,8 +272,8 @@ Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env
 | 2 | `core` | A bit of everything, including turning in work and sending messages. | 49 |
 | 3 | `study` | Planning your week and studying: planner, calendar, study plans, course files and pages. | 38 |
 | 4 | `grades` | Grades and feedback: scores, what-if, what you need on the final, rubrics and comments. | 31 |
-| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 176 |
-| 6 | `full` | Every tool. The default. | 241 |
+| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 177 |
+| 6 | `full` | Every tool. The default. | 242 |
 <!-- profiles:end -->
 
 - Not set means `full`: every tool, as before.

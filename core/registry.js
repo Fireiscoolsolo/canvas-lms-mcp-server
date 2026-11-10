@@ -58,7 +58,7 @@ export function confirmMessage(name, preview) {
 /** How long a tool that only reads may run. Longer than the 15 minutes a confirmation question waits for an answer. */
 export const TOOL_TIMEOUT_MS = 20 * 60000;
 
-export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {}, toolTimeoutMs = TOOL_TIMEOUT_MS }) {
+export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {}, toolTimeoutMs = TOOL_TIMEOUT_MS, changeLog = null }) {
   const registry = [];
   const known = new Set();
   let skipped = 0;
@@ -160,18 +160,21 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
    * preview comes back with a one-time token. The model sees that token, so it proves the request wasn't changed after
    * the preview, not that a person agreed: that still rests on the model showing the preview and on the app's own approval.
    */
-  async function confirmThenRun(name, handler, showPreview, args, extra, io) {
+  async function confirmThenRun(name, handler, showPreview, args, extra, io, track = {}) {
     const { confirm: _confirm, confirm_token: token, ...request } = args;
     if (token) canvas.cache.clear(); // the check below must see Canvas as it is now
     const details = (typeof showPreview === 'function' ? await showPreview(request, io) : null) || request;
     const run = async () => finish(await handler({ ...request, confirm: true }, io));
     const answer = await askToConfirm(name, details, extra);
+    if (answer !== 'unsupported') track.confirmed_by = 'asked in the app';
     if (answer === 'accept') return run();
-    if (answer === 'decline') return ok(details, 'Cancelled. Nothing was sent to Canvas.');
+    if (answer === 'decline') { track.outcome = 'cancelled'; return ok(details, 'Cancelled. Nothing was sent to Canvas.'); }
+    track.confirmed_by = 'preview and one-time token';
     const key = `${name}:${digest(request).toString('hex')}`;
     const state = digest(pick(details, TARGET_STATE)).toString('hex');
     const outcome = args.confirm === true && token ? redeem(key, token, state) : 'preview';
     if (outcome === 'ok') return run();
+    track.outcome = outcome === 'preview' ? 'preview' : 'refused';
     return ok(details, `${HEADINGS[outcome]}\nShow these details to the user and ask whether to go ahead. If they say yes, call ${name} again with the same arguments, confirm=true and confirm_token="${issueToken(key, state)}". It works once, for exactly this request, for ${TOKEN_MINUTES} minutes.`);
   }
 
@@ -238,25 +241,36 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       ...(output ? { outputSchema: output } : {}),
       annotations: { ...annotationsFor({ name, write, confirm, offline, local }), ...doc.annotations },
     }, async (args = {}, extra = {}) => {
+      // How this call was confirmed and how it ended, for the change log. 'preview' and 'skip' changed nothing.
+      const asks = Boolean(gated(args));
+      const track = { outcome: null, confirmed_by: asks ? null : 'not needed' };
+      const changes = write || asks;
+      const recorded = (result) => {
+        if (changeLog && changes && !['preview', 'skip'].includes(track.outcome)) {
+          changeLog.record({ tool: name, outcome: track.outcome || (result?.isError ? 'failed' : 'done'), confirmed_by: track.confirmed_by || 'not asked', args });
+        }
+        return result;
+      };
       const run = async (signal) => {
         try {
           const bad = unsafeId(args);
-          if (bad) return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`);
+          if (bad) { track.outcome = 'refused'; return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`); }
           if (!offline) {
             const problem = setupProblem();
-            if (problem) return fail(problem);
+            if (problem) { track.outcome = 'skip'; return fail(problem); }
           }
           const io = { progress: progressFor(extra), signal };
-          if (gated(args)) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io);
+          if (asks) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io, track);
           return finish(await handler(args, io));
         } catch (e) {
+          if (e?.code === 'BLOCKED') track.outcome = 'refused';
           if (e?.code !== 'STOPPED') logFailure(name, e);
           if (e instanceof CanvasError) return fail(e.message);
           return fail(`${name} failed: ${e.message}`);
         }
       };
       // A change to Canvas always runs to the end, so it never stops between its steps.
-      if (write) return callContext.run({ cut: [] }, () => run(extra.signal));
+      if (write) return recorded(await callContext.run({ cut: [] }, () => run(extra.signal)));
       // Anything else stops asking Canvas when the app gives up on it, or once it has run too long.
       const stop = new AbortController();
       const cancel = () => stop.abort();
@@ -272,7 +286,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       });
       const work = callContext.run({ signal: stop.signal, cut: [] }, () => run(stop.signal));
       try {
-        return await Promise.race([work, ceiling]);
+        return recorded(await Promise.race([work, ceiling]));
       } finally {
         clearTimeout(timer);
         extra.signal?.removeEventListener?.('abort', cancel);

@@ -13,6 +13,7 @@ import { ok, fail, pick, omitEmpty, iso, daysFromNow, makeDates, addLocalDates }
 import { createRegistry } from './registry.js';
 import { createShared, FIELDS, localFileLink } from './shared.js';
 import { createStateStore } from './state.js';
+import { createChangeLog, changeLogSetting } from './change-log.js';
 import { createTokenWatch } from './token-watch.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
@@ -95,7 +96,9 @@ export function createCanvasServer({
   const dates = makeDates(cfg.tz);
   const tokenWatch = createTokenWatch({ canvas, token: cfg.token, base: cfg.base, log: safeLog });
   const state = createStateStore(stateDir);
-  const reg = createRegistry({ server: recorder, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog, ...(toolTimeoutMs ? { toolTimeoutMs } : {}) });
+  const changeSetting = changeLogSetting(env);
+  const changeLog = createChangeLog({ dir: stateDir, on: changeSetting.on });
+  const reg = createRegistry({ server: recorder, canvas, cfg, dates, elicitation, notice: tokenWatch.notice, missingTokenHelp, log: safeLog, changeLog, ...(toolTimeoutMs ? { toolTimeoutMs } : {}) });
   const shared = createShared({ canvas, cfg, dates, fileLink, privateDirs: stateDir ? [stateDir] : [], ...(fetchImpl ? { fetchImpl } : {}), ...(downloadLimitBytes ? { downloadLimitBytes } : {}) });
 
   /** Refuse to SEND text that still carries fence markers: quoted Canvas content was passed through unfiltered. */
@@ -106,7 +109,7 @@ export function createCanvasServer({
 
   const ctx = {
     ...reg, ...shared, ...FIELDS,
-    canvas, cfg, state, tokenWatch, z, CanvasError,
+    canvas, cfg, state, tokenWatch, changeLog, z, CanvasError,
     ok, fail, pick, omitEmpty, iso, daysFromNow, sleep, addLocalDates,
     fence, html2text, applyFence, fenceComments, fenceProse, assertClean,
     localize: dates.localize, friendly: dates.friendly, relativeDue: dates.relativeDue, dayKey: dates.dayKey, dayLabel: dates.dayLabel,
@@ -134,6 +137,7 @@ export function createCanvasServer({
   function start() {
     if (cfg.settingsProblem) safeLog(`WARNING: ${cfg.settingsProblem}`);
     if (cfg.baseNote) safeLog(`note: ${cfg.baseNote}`);
+    if (changeSetting.problem) safeLog(`WARNING: ${changeSetting.problem}`);
     if (reg.unknownNames().length) safeLog(`WARNING: CANVAS_TOOLS or CANVAS_DISABLE_TOOLS names something that doesn't exist, so it did nothing: ${reg.unknownNames().join(', ')}`);
     if (cfg.tokenError) safeLog(`WARNING: ${cfg.tokenError}`);
     else if (!cfg.token) safeLog(`WARNING: CANVAS_API_TOKEN is not set. Every Canvas tool will return a setup error. ${missingTokenHelp}`.trim());

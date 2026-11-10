@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { PROFILES, profileIncludes, profileChoices } from '../profiles.js';
 
 export default function register(ctx) {
-  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, leftOut, catalog, skipped, unknownNames, tokenWatch, localize, cfg, state, elicitation } = ctx;
+  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, leftOut, catalog, skipped, unknownNames, tokenWatch, localize, cfg, state, elicitation, changeLog } = ctx;
 
   const O = 'meta';
 
@@ -97,6 +97,21 @@ export default function register(ctx) {
         token: token?.expires_at ? { expires: localize(token.expires_at), days_left: Math.floor((new Date(token.expires_at) - Date.now()) / 86400000) } : token ? { expires: 'never' } : 'Could not read the token\'s expiry (your school may hide it).',
         rate_limit: { last_cost: canvas.lastCost, remaining: canvas.lastRemaining },
         checks: results,
+      });
+    },
+  });
+
+  tool({
+    name: 'get_change_log', group: O, offline: true,
+    description: 'What this server changed in Canvas, newest first: when, which tool, which course or item, whether it went through, and how it was confirmed.',
+    schema: { limit: z.number().int().positive().max(200).optional().describe('How many changes to show. Default 25.') },
+    handler: async (a) => {
+      const changes = changeLog.read(a.limit || 25).map((e) => ({ when: localize(e.at), at: e.at, tool: e.tool, outcome: e.outcome, confirmed_by: e.confirmed_by, ids: e.ids }));
+      return ok({
+        recording: changeLog.on, kept_in: changeLog.file || 'memory, for this run only', count: changes.length, changes,
+        note: changeLog.on
+          ? 'Only IDs are kept: never message text, file paths or anything Canvas sent back. Reading is never recorded.'
+          : 'Recording is off because CANVAS_CHANGE_LOG is off. Remove that setting to turn it back on.',
       });
     },
   });

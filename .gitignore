@@ -4,6 +4,8 @@ canvas-downloads/
 oauth-store.json
 login-history.json
 alerts-state.json
+changes.jsonl
+changes.old.jsonl
 supervisor-state.json
 state.json
 *.log

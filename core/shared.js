@@ -173,7 +173,7 @@ function writeNew(folder, name, data) {
 
 // What an upload must never pick up, whoever asks: files that hold keys or sign-ins, and the folders that keep them.
 // A block list, not an allow list, because schoolwork can be anywhere: Documents, Desktop, OneDrive.
-const PRIVATE_NAMES = /^(\.env(\..*)?|\.npmrc|\.netrc|\.pgpass|\.git-credentials|oauth-store\.json(\.tmp)?|login-history\.json|supervisor-state\.json|alerts-state\.json|claude_desktop_config\.json|ngrok\.yml|id_(rsa|dsa|ecdsa|ed25519)|.+\.(pem|pfx|p12|ppk|kdbx))$/i;
+const PRIVATE_NAMES = /^(\.env(\..*)?|\.npmrc|\.netrc|\.pgpass|\.git-credentials|oauth-store\.json(\.tmp)?|login-history\.json|supervisor-state\.json|alerts-state\.json|changes(\.old)?\.jsonl|claude_desktop_config\.json|ngrok\.yml|id_(rsa|dsa|ecdsa|ed25519)|.+\.(pem|pfx|p12|ppk|kdbx))$/i;
 const PRIVATE_FOLDERS = [
   '/.ssh/', '/.aws/', '/.azure/', '/.gnupg/', '/.kube/', '/.docker/', '/.mozilla/', '/.config/google-chrome/', '/.config/chromium/',
   '/.claude/', '/.codex/', '/.cursor/', '/.gemini/', '/.codeium/', '/.lmstudio/', '/.config/claude/',

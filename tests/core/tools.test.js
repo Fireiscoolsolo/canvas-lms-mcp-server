@@ -12,7 +12,7 @@ test('every tool runs against a fake Canvas without crashing', { timeout: 120000
   const { client, dir, close } = await connect({ calls });
   try {
     const { tools } = await client.listTools();
-    assert.ok(tools.length >= 241, `expected at least 241 tools, got ${tools.length}`);
+    assert.ok(tools.length >= 242, `expected at least 242 tools, got ${tools.length}`);
     const crashes = [];
     for (const t of tools) {
       const args = sampleArgs(t.inputSchema, dir);

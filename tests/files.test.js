@@ -85,7 +85,7 @@ test('only you can read the sign-ins, the history, .env and its backups', { skip
 });
 
 test('git ignores every file that holds a secret or a sign-in', { skip: spawnSync('git', ['--version']).status !== 0 && 'git is not installed' }, () => {
-  const names = ['.env', '.env.backup-20261107-120000', 'oauth-store.json', 'oauth-store.json.tmp', 'login-history.json', 'login-history.json.tmp', 'supervisor.log'];
+  const names = ['.env', '.env.backup-20261107-120000', 'oauth-store.json', 'oauth-store.json.tmp', 'login-history.json', 'login-history.json.tmp', 'supervisor.log', 'changes.jsonl', 'changes.old.jsonl'];
   for (const name of names) {
     const r = spawnSync('git', ['check-ignore', '-q', '--no-index', name], { cwd: ROOT });
     assert.equal(r.status, 0, `${name} should be git-ignored`);
