@@ -307,7 +307,7 @@ Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env
 
 The server also adds these to your AI app's menus. They don't count as tools.
 
-- **Prompts**: *Daily briefing*, *Plan my week*, *Plan my study blocks*, *What did I miss?*, *Start this assignment*, *Prep me for an exam*, *How are my grades?*, *Am I on track to pass?*, *Catch me up on a course*, *Draft an email to my professor* and *Semester wrap-up*. Each one tells the assistant which tools to use, and course names autocomplete.
+- **Prompts**: *Daily briefing*, *Plan my week*, *Plan my study blocks*, *What did I miss?*, *Start this assignment*, *Prep me for an exam*, *How are my grades?*, *Am I on track to pass?*, *Catch me up on a course*, *Draft an email to my professor*, *Semester wrap-up*, *Quiz me*, *Check my draft*, *Weekly review* and *What does my feedback say?* Each one tells the assistant which tools to use, and course names autocomplete. A prompt only shows up when the [tool profile](#tool-profiles) has every tool it uses.
 - **Attachments**: attach a course syllabus, or an assignment due in the next 14 days, to a chat the same way you'd attach a file.
 
 Apps that support MCP prompts and resources, such as Claude Desktop, show them in the **+** menu.

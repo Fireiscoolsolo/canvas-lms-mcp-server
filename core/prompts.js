@@ -179,5 +179,64 @@ export function registerPrompts(server, { listCourseNames, isOn = () => true }) 
     '4. Offer to save copies of my courses with export_all_courses (or download_all_course_files for one course), and do it only if I say yes.',
   ].join('\n')));
 
+  prompt('quiz_me', ['list_courses', 'list_modules', 'read_course_file', 'get_page_content'], {
+    title: 'Quiz me',
+    description: 'Practice questions from your course\'s own files and pages, one at a time, with the answer after you try.',
+    argsSchema: {
+      course: course('The course to be quizzed on'),
+      topic: z.string().optional().describe('What to be quizzed on, e.g. "cell membranes". Leave empty for the most recent module.'),
+    },
+  }, ({ course: c, topic }) => say([
+    `Quiz me on ${topic ? `"${topic}"` : 'the most recent module'} in ${c}.`,
+    `1. Find the course with list_courses, then use list_modules to find ${topic ? 'the material about that topic' : 'the most recent module'}.`,
+    '2. Read it: files with read_course_file and pages with get_page_content.',
+    '3. Ask me one question at a time, mixing short answer and multiple choice. Then wait for my answer before going on.',
+    '4. After each answer, say whether I was right, explain it briefly, and name the file or page it came from.',
+    '5. After 10 questions, or when I say stop, give me my score and the two topics to review.',
+    'Only use what is in the course material.',
+  ].join('\n')));
+
+  prompt('check_my_draft', ['list_courses', 'list_assignments', 'assignment_brief', 'get_rubric'], {
+    title: 'Check my draft',
+    description: 'Paste your draft and see what it already does and what is missing, against the instructions and rubric. It won\'t rewrite it for you.',
+    argsSchema: {
+      course: course('The course'),
+      assignment: z.string().describe('The assignment name, or part of it'),
+    },
+  }, ({ course: c, assignment }) => say([
+    `I want to check my draft of "${assignment}" in ${c} before I turn it in. I'll paste it after this message.`,
+    '1. Find the course with list_courses and the assignment with list_assignments.',
+    '2. Use assignment_brief for the instructions and rubric. If the rubric looks cut short, get_rubric has all of it.',
+    '3. Wait until I paste my draft.',
+    '4. Go through each instruction and rubric criterion: say what my draft already does, what is missing or weak, and quote the line you mean.',
+    '5. End with the three changes that would help most.',
+    'Do not rewrite my draft or write new parts of it for me. Point out what to fix and let me do the writing.',
+  ].join('\n')));
+
+  prompt('weekly_review', ['recent_feedback', 'get_week_ahead', 'list_missing_submissions'], {
+    title: 'Weekly review',
+    description: 'Last week\'s grades and feedback, next week\'s work, and the one thing to do first.',
+  }, () => say([
+    'Give me my weekly review.',
+    '1. Use recent_feedback with days 7 for last week\'s grades and teacher comments.',
+    '2. Use get_week_ahead for what is due in the next 7 days, and list_missing_submissions for anything I missed.',
+    '3. Sum up last week in a few lines: new grades, and any feedback worth acting on.',
+    '4. List next week day by day, with missing work first.',
+    '5. End with the one thing I should do first, and why.',
+  ].join('\n')));
+
+  prompt('feedback_review', ['list_courses', 'recent_feedback', 'get_rubric_assessment'], {
+    title: 'What does my feedback say?',
+    description: 'Reads your recent teacher comments and rubric scores in one course and finds what keeps coming up.',
+    argsSchema: { course: course('The course') },
+  }, ({ course: c }) => say([
+    `Look at my recent feedback in ${c} and tell me what keeps coming up.`,
+    '1. Find the course with list_courses, then use recent_feedback for that course with days 60.',
+    '2. For assignments with rubric scores, use get_rubric_assessment to see each criterion.',
+    '3. Group the comments into themes, such as citing sources, structure or showing your work, and say which ones keep coming up.',
+    '4. For the top two themes, give one concrete thing to do differently on the next assignment.',
+    'Quote the teacher\'s words where it helps, and keep it encouraging.',
+  ].join('\n')));
+
   return list;
 }
