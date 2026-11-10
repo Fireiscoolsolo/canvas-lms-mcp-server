@@ -19,12 +19,7 @@ All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Lo
 - **The public health check says less.** Through your public address, `/healthz` now only says the server is up and how many tools it has. The version and whether sign-in is on are only shown on the computer itself, for `doctor` and `status`.
 - **The Docker images are pinned.** The Dockerfile and the tunnel images in `docker-compose.yml` name an exact version and digest instead of `latest`, so a rebuild uses what was tested.
 - **The tunnel program doesn't see your secrets.** ngrok and cloudflared were started with the server's whole environment, including the Canvas token, password and cluster secret. They now get everything except this server's `CANVAS_` settings, plus the tunnel token cloudflared needs.
-- **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN# Changelog
-
-All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
-([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
-
- or `COM¹`. A long name is shortened without losing its extension.
+- **A file name can't disguise what it is.** Downloads drop invisible and right-to-left characters, which could make `notes.exe` look like `notes.pdf`, and never use a name Windows keeps for devices, such as `CONIN$` or `COM¹`. A long name is shortened without losing its extension.
 - **Files can't be bigger than they look.** A Word or PowerPoint file is read only up to 64 MB of text inside, so a small crafted file that expands to gigabytes is refused instead of taking the server down, even when it lies about its size. `read_course_file` stops at 25 MB as the file arrives, whatever Canvas says its size is. Downloads are now written to disk as they arrive instead of being held in memory, up to 4 GB, and a failed one leaves nothing half-written.
 - **The token is never sent unencrypted.** A school address written with `http://` is now used with `https://`, and the log says so. Only a Canvas running on the same computer keeps `http://`.
 - **Your Canvas token only goes to Canvas.** Every request now passes one check, so no tool can send the token to another address, whether that address came from the model, a next-page link, a file record or an upload. Files stored on another host are fetched without it. `download_submission_attachment` only takes addresses on your Canvas. If your school uses a second address for Canvas, use that one in `CANVAS_BASE_URL`.

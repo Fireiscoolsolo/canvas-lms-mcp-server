@@ -34,6 +34,13 @@ test('the release check ships in this repo', () => {
   assert.ok(fs.existsSync(SCRIPT), 'scripts/release-check.mjs is missing');
 });
 
+test('the changelog has its title once, so nothing was pasted into the middle of it', () => {
+  // A text replace once turned `$`` into the whole file header, in the middle of a sentence. Count every copy, not
+  // only the ones at the start of a line.
+  const text = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+  assert.equal(text.split('# Changelog').length - 1, 1, 'CHANGELOG.md has "# Changelog" more than once');
+});
+
 test('this repo is ready to publish as far as versions go', () => {
   const r = check(ROOT);
   assert.equal(r.status, 0, r.stderr);
