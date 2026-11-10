@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readEnv } from './env-file.js';
-import { serviceInfo } from './service.js';
+import { serviceInfo, staleNode } from './service.js';
 import { matchToken, daysLeft } from './core/token-watch.js';
 import { normalizeBase } from './core/canvas-client.js';
 import { ipFamilyFrom } from './core/config.js';
@@ -129,6 +129,8 @@ export async function runDoctor({ dir, version, fetchImpl = fetch, service = ser
     good(`${svc.kind} "${svc.name}" is set up${svc.state ? ` (${svc.state})` : ''}`);
     if (svc.oldLog) warn('It uses the old log setup, so supervisor.log grows forever. Run "canvas-lms-mcp-remote install-service" again to switch to the rotating log.');
     if (svc.dir && path.resolve(svc.dir) !== path.resolve(dir)) warn(`It runs from ${svc.dir}, not this folder.`);
+    const gone = staleNode(svc);
+    if (gone) bad(gone);
   }
   try {
     const size = fs.statSync(path.join(dir, 'supervisor.log')).size;

@@ -87,7 +87,8 @@ async function stopLocal() {
     if (readState()?.state === 'stopped') return true;
   }
   fs.rmSync(path.join(DIR, 'stop.flag'), { force: true });
-  throw new Error(`The supervisor didn't stop within 20 seconds (it may be an older version that doesn't know "stop"). Stop it from Task Manager, then try again.`);
+  const byHand = { win32: 'End the "Node.js" task in Task Manager', darwin: 'Quit "node" in Activity Monitor' }[process.platform] || 'Stop it with: pkill -f supervisor.js';
+  throw new Error(`The supervisor didn't stop within 20 seconds (it may be an older version that doesn't know "stop"). ${byHand}, then try again.`);
 }
 
 const commands = {

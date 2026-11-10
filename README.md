@@ -186,6 +186,8 @@ Start-ScheduledTask -TaskName CanvasSupervisor
 `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file.
 </details>
 
+On a Mac, `install-service` creates a launch agent in `~/Library/LaunchAgents`. A Mac that sleeps stops serving, and another computer in your group takes over. To keep it awake while it's plugged in, turn on **Prevent automatic sleeping on power adapter when the display is off** (System Settings → Battery → Options; on a desktop Mac, System Settings → Energy).
+
 ### 7. Connect your AI app, on every device
 In your AI app's settings, add a **custom connector** (also called a *remote MCP server*) with the URL `https://<your-domain>/mcp`, then log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Command-line and editor clients can add it as an **HTTP** MCP server with the same URL.
 
@@ -400,6 +402,12 @@ Stop-ScheduledTask -TaskName CanvasSupervisor -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'supervisor\.js|index\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
+```
+On a Mac, in Terminal:
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
 ```
 
 **Known limits:** a student token can't reach admin endpoints, gradebook history, course analytics or quiz statistics. `smart_search` is a Canvas beta feature and often returns 404. While the server is reached over the tunnel, apps get a preview before actions instead of a pop-up confirmation.

@@ -106,6 +106,15 @@ ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
 >
 > If `ngrok.exe` isn't at `%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe`, add `CANVAS_MCP_NGROK_PATH=C:\full\path\to\ngrok.exe` to `.env`.
 
+On a Mac, with [Homebrew](https://brew.sh):
+
+```bash
+brew install ngrok
+ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
+```
+
+The server finds ngrok by itself in Homebrew's folders and on your `PATH`.
+
 ### Step 4: Start it automatically at logon
 
 **Easiest, on Windows, Linux or macOS:** from your settings folder, run
@@ -134,13 +143,13 @@ Installed from npm? Replace the `$action` line with:
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" start --log-file supervisor.log' -WorkingDirectory $dir
 ```
 
-> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, run `node supervisor.js` with launchd or pm2 instead.
+> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, `install-service` sets up a launch agent for you; there's nothing to do by hand. A Mac that sleeps stops serving, and another computer in your group takes over. To keep it awake while it's plugged in, turn on **Prevent automatic sleeping on power adapter when the display is off** (System Settings → Battery → Options; on a desktop Mac, System Settings → Energy).
 
 ### Linux: run it as a systemd user service
 
 On Linux, use a systemd **user** service instead of the scheduled task. No root needed here either.
 
-The supervisor looks for ngrok at the Windows path by default, so point it at your ngrok in `.env`:
+The supervisor finds ngrok on your `PATH` and in the usual install folders by itself. If yours is somewhere else, point it at ngrok in `.env`:
 
 ```bash
 echo "CANVAS_MCP_NGROK_PATH=$(command -v ngrok)" >> .env
