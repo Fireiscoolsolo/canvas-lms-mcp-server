@@ -46,7 +46,7 @@ export const PROFILES = Object.freeze([
       'create_personal_event', 'list_planner_items', 'list_planner_notes', 'create_planner_note', 'update_planner_note',
       'delete_planner_note', 'mark_planner_item_done', 'export_deadlines_ics', 'daily_briefing', 'study_plan',
       'schedule_study_plan', 'get_week_ahead', 'get_workload_forecast', 'deadline_conflict_check', 'study_priority_ranking',
-      'syllabus_digest', 'list_announcements',
+      'syllabus_digest', 'list_announcements', 'next_module_items',
     ],
   },
   {

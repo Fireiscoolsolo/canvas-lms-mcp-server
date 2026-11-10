@@ -12,7 +12,7 @@ test('every tool runs against a fake Canvas without crashing', { timeout: 120000
   const { client, dir, close } = await connect({ calls });
   try {
     const { tools } = await client.listTools();
-    assert.ok(tools.length >= 238, `expected at least 238 tools, got ${tools.length}`);
+    assert.ok(tools.length >= 239, `expected at least 239 tools, got ${tools.length}`);
     const crashes = [];
     for (const t of tools) {
       const args = sampleArgs(t.inputSchema, dir);
@@ -234,6 +234,43 @@ test('recent_feedback asks each course when the school blocks the one-request li
     assert.ok(!r.isError, r.content[0].text);
     assert.ok(calls.some((c) => c.path === '/courses/1/students/submissions'));
     assert.ok(calls.some((c) => c.path === '/courses/2/students/submissions'));
+  } finally { await close(); }
+});
+
+test('next_module_items finds where you are in a course and what each next item needs', async () => {
+  const calls = [];
+  const req = (type, done, extra = {}) => ({ type, completed: done, ...extra });
+  const modules = [
+    { id: '10', name: 'Week 1', position: 1, state: 'completed', items: [{ id: '100', title: 'Intro', type: 'Page', completion_requirement: req('must_view', true) }] },
+    { id: '11', name: 'Week 2', position: 2, state: 'started', items: [
+      { id: '110', title: 'Reading', type: 'Page', completion_requirement: req('must_view', true) },
+      { id: '111', title: 'Lab 2', type: 'Assignment', completion_requirement: req('must_submit', false), content_details: { due_at: daysAgo(-2), points_possible: 20 } },
+      { id: '112', title: 'Quiz 2', type: 'Quiz', completion_requirement: req('min_score', false, { min_score: 7 }) },
+    ] },
+    { id: '12', name: 'Week 3', position: 3, state: 'locked', prerequisite_module_ids: ['11'] },
+  ];
+  const { client, close } = await connect({
+    calls,
+    override: (method, p) => {
+      if (p === '/courses/1/modules') return { body: modules };
+      if (p === '/courses/1/modules/12/items') return { body: [{ id: '120', title: 'Essay', type: 'Assignment', completion_requirement: req('must_mark_done', false) }] };
+      return null;
+    },
+  });
+  try {
+    const r = answer(await client.callTool({ name: 'next_module_items', arguments: { course_id: '1' } }));
+    const c = r.courses[0];
+    assert.equal(c.current_module, 'Week 2');
+    assert.equal(c.modules_done, '1 of 3');
+    assert.deepEqual(c.next.map((i) => i.title), ['Lab 2', 'Quiz 2', 'Essay']);
+    assert.match(c.next[0].to_finish, /turn it in/i);
+    assert.equal(c.next[0].points_possible, 20);
+    assert.match(c.next[1].to_finish, /7/);
+    assert.equal(c.next[2].locked, true);
+    assert.match(c.next[2].locked_until, /Week 2/);
+    assert.deepEqual([c.next[0].module_id, c.next[0].item_id], ['11', '111'], 'IDs to pass to mark_module_item_done');
+    assert.ok(calls.some((x) => x.path === '/courses/1/modules/12/items'), 'a module listed without its items is asked for them');
+    assert.ok(!calls.some((x) => x.path === '/courses/1/modules/10/items'), 'a finished module is not');
   } finally { await close(); }
 });
 
