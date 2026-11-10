@@ -3,6 +3,30 @@
 All notable changes to `canvas-lms-mcp-remote`. The tools are shared with the Local Edition
 ([canvas-lms-mcp-local](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)), so tool changes appear in both changelogs.
 
+## 1.5.0
+
+### New
+- **Tool profiles.** Pick which tools your AI app sees with `CANVAS_PROFILE`, by name or number: 1 `essentials` (24 tools), 2 `core` (49, as before), 3 `study` (38), 4 `grades` (31), 5 `readonly` (177) or 6 `full` (all 242, still the default). `essentials` and `readonly` never change anything in Canvas, even with `CANVAS_ALLOW_WRITES=true`. `CANVAS_TOOLS` and `CANVAS_DISABLE_TOOLS` still narrow any profile. A value the server can't read still stops the server, with the reason.
+- **Your AI knows which profile is on.** `search_tools` lists matching tools the profile left out and how to turn them on, `get_server_config` lists every profile with its tool count, and a prompt only shows up when every tool it uses is on.
+- **Five new tools, 242 in all:** `recent_feedback` (grades and teacher comments from the last few days, across courses), `next_module_items` (what's next in each course's modules and what's locked), `find_exams` (upcoming exams, midterms and finals, with why each was picked), `list_recent_history` (the Canvas pages you opened lately) and `get_change_log` (what the server changed in Canvas).
+- **A record of what changed.** Every change the server makes in Canvas is noted in `changes.jsonl` in its settings folder: when, which tool, the course and item IDs, and how you confirmed it. Never message text or anything Canvas sent back. `CANVAS_CHANGE_LOG=off` turns it off.
+- **Four new prompts:** *Quiz me*, *Check my draft*, *Weekly review* and *What does my feedback say?*
+- `canvas-lms-mcp-remote profile` shows the profiles, or switches to one: it checks the name, backs up `.env` and saves it. The status page, `status` and `doctor` show the profile. Use the same one on every computer in a group.
+
+### Fixed
+- **The Mac launch agent.** `doctor` now reads back its folder, the Node it runs and whether it's running, and says to run `install-service` again when that Node is gone after an nvm or Homebrew update. The stop message names Activity Monitor on a Mac.
+- `MULTI_DEVICE.md` no longer says to use pm2 on a Mac, or that ngrok is looked for at a Windows path. The README and guide have Mac steps, including how to keep a plugged-in Mac awake.
+- When macOS blocks a folder, tools say how to allow it in System Settings.
+- The README and website give the right count for each tool group, and a test keeps them right.
+- A changelog sentence that a text replace had broken.
+
+### Security
+- Uploads refuse the change log, and the folders where Cursor, Windsurf, ngrok, Brave, Arc and Safari keep their data on a Mac.
+- `changes.jsonl` is kept out of git.
+
+### Upgrade
+Run `npm install -g canvas-lms-mcp-remote`, then `canvas-lms-mcp-remote restart`, on every computer, or use **Auto update** in the Installer Assistant. Profile names other than `full` and `core` need this version on every computer in your group.
+
 ## 1.4.1
 
 ### Fixed
