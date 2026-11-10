@@ -7,21 +7,10 @@ import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 import { CanvasError, callContext, hideAddresses } from './canvas-client.js';
 import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, trimToFit, DEFAULT_PAGE_SIZE } from './format.js';
 import { applyFence, fenceComments, fenceProse } from './text.js';
+import { profileById } from './profiles.js';
 
-/** The curated subset served when CANVAS_PROFILE=core. */
-export const CORE_TOOLS = new Set([
-  'whoami', 'test_connection', 'check_token_expiry', 'raw_canvas_request', 'get_server_config',
-  'list_courses', 'get_course', 'get_syllabus', 'list_assignments', 'get_assignment', 'assignment_brief',
-  'list_missing_submissions', 'list_upcoming_assignments', 'list_overdue_assignments',
-  'get_my_submission', 'list_submission_comments', 'submit_assignment_text', 'submit_assignment_file',
-  'get_all_grades', 'get_course_grade_breakdown', 'what_if_grade', 'compute_needed_score', 'final_grade_scenarios',
-  'list_conversations', 'get_conversation', 'send_message', 'reply_to_conversation',
-  'list_topics', 'get_full_topic_view', 'post_entry', 'list_announcements',
-  'list_calendar_events', 'list_modules', 'list_module_items', 'list_course_files', 'read_course_file',
-  'get_media_captions', 'list_pages', 'get_page_content',
-  'get_week_ahead', 'daily_briefing', 'get_all_unread', 'course_health_check', 'semester_snapshot', 'study_priority_ranking',
-  'list_planner_items', 'create_planner_note', 'mark_planner_item_done', 'search_tools',
-]);
+/** The curated subset served when CANVAS_PROFILE=core. The list itself lives in core/profiles.js. */
+export const CORE_TOOLS = new Set(profileById('core').tools);
 
 // Always available, whatever CANVAS_TOOLS says, so the assistant can still find tools and diagnose problems.
 const ALWAYS = new Set(['search_tools', 'test_connection', 'get_server_config']);
@@ -87,7 +76,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   const PAGE = z.number().int().positive().optional().describe('Page of results');
 
   function enabled(name, group, write) {
-    if (cfg.profile === 'core' && !CORE_TOOLS.has(name)) return false;
+    if (cfg.profileTools && !cfg.profileTools.has(name)) return false;
     if (write && !cfg.allowWrites) return false;
     if (cfg.disabled.has(name) || cfg.disabled.has(group)) return false;
     if (cfg.tools && !ALWAYS.has(name) && !cfg.tools.has(name) && !cfg.tools.has(group)) return false;

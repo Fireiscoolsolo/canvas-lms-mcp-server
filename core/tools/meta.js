@@ -25,7 +25,11 @@ export default function register(ctx) {
     handler: async (a) => {
       const m = a.method.toUpperCase();
       canvas.check(m, a.path, a.params);
-      if (m !== 'GET' && !ALLOW_WRITES) return fail('Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
+      if (m !== 'GET' && !ALLOW_WRITES) {
+        return fail(cfg.writesSetting
+          ? `Write methods are off because the ${cfg.profileTitle} profile (CANVAS_PROFILE=${PROFILE}) only reads. Pick a profile that can make changes to use them.`
+          : 'Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
+      }
       if (m === 'GET') {
         const data = a.paginate ? await canvas.paginate(a.path, a.params, { max: a.max_items || 200, ttl: 0 }) : await canvas.get(a.path, a.params, { ttl: 0 });
         return ok(data);

@@ -5,7 +5,7 @@
 //   CANVAS_TOKEN_STORE     Or: "keychain" to read it from Windows Credential Manager / macOS Keychain / secret-tool
 //   CANVAS_BASE_URL        e.g. https://yourschool.instructure.com (with or without /api/v1)
 //   CANVAS_ALLOW_WRITES    false (or 0, no, off) removes every tool that changes Canvas. Default: true
-//   CANVAS_PROFILE         "full" (default, all tools) | "core" (curated subset)
+//   CANVAS_PROFILE         Which tools to turn on, by name or number (core/profiles.js). Default: full, every tool
 //   CANVAS_TOOLS           Only these groups or tool names, comma-separated, e.g. "grades,planning,whoami"
 //   CANVAS_DISABLE_TOOLS   Leave out these groups or tool names, comma-separated
 //   CANVAS_CACHE_TTL       Cache lifetime in seconds. Default: 60
@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeBase } from './canvas-client.js';
 import { readStoredToken, storeName } from './token-store.js';
+import { resolveProfile, profileById, profileChoices, FALLBACK_PROFILE, isUnset as blank } from './profiles.js';
 
 const list = (v) => {
   const items = String(v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -49,22 +50,28 @@ export const ipFamilyFrom = (env = process.env) => (['4', '6'].includes(String(e
 const YES = new Set(['true', '1', 'yes', 'on']);
 const NO = new Set(['false', '0', 'no', 'off']);
 
-/** Never really set. An app that can't fill in a setting can leave its ${placeholder} behind. */
-const blank = (v) => !String(v ?? '').trim() || /^\$\{.*\}$/.test(String(v).trim());
-
 /**
  * The settings that restrict what the server may do. A value nobody can read must never mean "no restriction", so it
  * falls back to the safe choice and is reported: tools refuse with the message, and Remote won't start.
+ * Changes are on only when CANVAS_ALLOW_WRITES and the profile both allow them: the stricter one wins.
  */
 function readLimits(env) {
   const problems = [];
   const writes = String(env.CANVAS_ALLOW_WRITES ?? '').trim().toLowerCase();
-  const profile = String(env.CANVAS_PROFILE ?? '').trim().toLowerCase();
   const writesOn = blank(env.CANVAS_ALLOW_WRITES) || YES.has(writes);
-  const everything = blank(env.CANVAS_PROFILE) || profile === 'full';
   if (!writesOn && !NO.has(writes)) problems.push(`CANVAS_ALLOW_WRITES is set to "${env.CANVAS_ALLOW_WRITES}", which this server can't read. Use true or false.`);
-  if (!everything && profile !== 'core') problems.push(`CANVAS_PROFILE is set to "${env.CANVAS_PROFILE}", which this server can't read. Use full or core.`);
-  return { allowWrites: writesOn, profile: everything ? 'full' : 'core', settingsProblem: problems.join(' ') };
+  const chosen = resolveProfile(env.CANVAS_PROFILE);
+  if (!chosen) problems.push(`CANVAS_PROFILE is set to "${env.CANVAS_PROFILE}", which this server can't read. Use one name or number: ${profileChoices()}.`);
+  const profile = chosen || profileById(FALLBACK_PROFILE);
+  return {
+    allowWrites: writesOn && profile.writes,
+    writesSetting: writesOn,
+    profile: profile.id,
+    profileNumber: profile.number,
+    profileTitle: profile.title,
+    profileTools: profile.tools === 'all' ? null : new Set(profile.tools),
+    settingsProblem: problems.join(' '),
+  };
 }
 
 export function readConfig(env = process.env, { defaultDownloadDir, readStore } = {}) {
