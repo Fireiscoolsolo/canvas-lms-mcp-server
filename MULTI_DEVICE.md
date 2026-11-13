@@ -197,6 +197,12 @@ Wait about 15 seconds, then read the log:
 Get-Content .\supervisor.log -Tail 20
 ```
 
+On a Mac, in Terminal:
+
+```bash
+tail -n 20 supervisor.log
+```
+
 You should see **one** of these, and both are correct:
 
 | Log says | Meaning |
@@ -208,6 +214,12 @@ Then confirm the public address answers:
 
 ```powershell
 Invoke-RestMethod https://<your-domain>/healthz -Headers @{ 'ngrok-skip-browser-warning' = '1' }
+```
+
+On a Mac:
+
+```bash
+curl -s -H 'ngrok-skip-browser-warning: 1' https://<your-domain>/healthz
 ```
 
 Expected: `ok: True`, `tools: 242`, `auth_enabled: True`.
@@ -222,6 +234,13 @@ Expected: `ok: True`, `tools: 242`, `auth_enabled: True`.
 Stop-ScheduledTask -TaskName CanvasSupervisor -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'supervisor\.js|index\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+On a Mac, in Terminal:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
 ```
 
 Within about 1 to 1.5 minutes, the other computer's `supervisor.log` should show:
@@ -240,6 +259,12 @@ Ask your assistant something about Canvas. It should still work, without logging
 
 ```powershell
 Start-ScheduledTask -TaskName CanvasSupervisor
+```
+
+On a Mac:
+
+```bash
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
 ```
 
 It should report that the other computer is already active and settle into **standby** without interrupting anything. Then repeat the test the other way round.
@@ -277,6 +302,17 @@ Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 Start-ScheduledTask -TaskName CanvasSupervisor
 ```
+
+On a Mac, in Terminal:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
+sleep 1
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+```
+
+With version 1.3.0 or newer installed from npm, `canvas-lms-mcp-remote restart` from your settings folder does the same on both systems.
 
 ## Updating the code on every computer
 

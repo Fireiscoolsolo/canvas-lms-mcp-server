@@ -391,6 +391,7 @@ Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks
 | "Your Canvas token was rejected" | Your token expired. Create a new one and put it in `.env` |
 | Reading works but uploads or new connections time out | Run `doctor` on that computer: its Network section times DNS and tests every connection. The server works around a slow DNS lookup by itself, so if a connection still fails, look for a VPN, proxy or firewall |
 | "File not found on the computer running this server" | The server reads files from its own disk, so the path must exist on the computer named in the error, not the one you're chatting from |
+| Your AI app struggles with so many tools | Pick a smaller [tool profile](#tool-profiles): in your settings folder, run `canvas-lms-mcp-remote profile essentials` (or `1`), then `canvas-lms-mcp-remote restart`. Use the same profile on every computer in your group |
 | New tools don't show up | Reconnect the connector or restart your AI app |
 | `supervisor.log` keeps growing | Run `canvas-lms-mcp-remote install-service` again to switch to the rotating log |
 
