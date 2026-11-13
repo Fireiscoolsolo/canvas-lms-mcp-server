@@ -58,6 +58,7 @@ Add an **HTTP** (Streamable HTTP) MCP server named `canvas` with the URL `https:
 | `CANVAS_MCP_PASSWORD` | **Must match** | Otherwise new logins fail whenever the mismatched computer is active |
 | ngrok **account** (authtoken) | **Must match** | A static domain belongs to one ngrok account |
 | `CANVAS_BASE_URL` | Same | Your school |
+| `CANVAS_PROFILE` | Same | Otherwise the tools your apps see change whenever another computer takes over. `doctor` shows each computer's profile |
 | `CANVAS_API_TOKEN` | either | Recommended: a **separate token per computer**, so you can revoke one without breaking the others |
 
 ---
@@ -105,6 +106,15 @@ ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
 >
 > If `ngrok.exe` isn't at `%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe`, add `CANVAS_MCP_NGROK_PATH=C:\full\path\to\ngrok.exe` to `.env`.
 
+On a Mac, with [Homebrew](https://brew.sh):
+
+```bash
+brew install ngrok
+ngrok config add-authtoken <the SAME ngrok authtoken as computer A>
+```
+
+The server finds ngrok by itself in Homebrew's folders and on your `PATH`.
+
 ### Step 4: Start it automatically at logon
 
 **Easiest, on Windows, Linux or macOS:** from your settings folder, run
@@ -133,13 +143,13 @@ Installed from npm? Replace the `$action` line with:
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c call "%APPDATA%\npm\canvas-lms-mcp-remote.cmd" start --log-file supervisor.log' -WorkingDirectory $dir
 ```
 
-> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, run `node supervisor.js` with launchd or pm2 instead.
+> `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file. On Linux, see [the systemd user service below](#linux-run-it-as-a-systemd-user-service). On macOS, `install-service` sets up a launch agent for you; there's nothing to do by hand. A Mac that sleeps stops serving, and another computer in your group takes over. To keep it awake while it's plugged in, turn on **Prevent automatic sleeping on power adapter when the display is off** (System Settings → Battery → Options; on a desktop Mac, System Settings → Energy).
 
 ### Linux: run it as a systemd user service
 
 On Linux, use a systemd **user** service instead of the scheduled task. No root needed here either.
 
-The supervisor looks for ngrok at the Windows path by default, so point it at your ngrok in `.env`:
+The supervisor finds ngrok on your `PATH` and in the usual install folders by itself. If yours is somewhere else, point it at ngrok in `.env`:
 
 ```bash
 echo "CANVAS_MCP_NGROK_PATH=$(command -v ngrok)" >> .env
@@ -187,6 +197,12 @@ Wait about 15 seconds, then read the log:
 Get-Content .\supervisor.log -Tail 20
 ```
 
+On a Mac, in Terminal:
+
+```bash
+tail -n 20 supervisor.log
+```
+
 You should see **one** of these, and both are correct:
 
 | Log says | Meaning |
@@ -200,7 +216,13 @@ Then confirm the public address answers:
 Invoke-RestMethod https://<your-domain>/healthz -Headers @{ 'ngrok-skip-browser-warning' = '1' }
 ```
 
-Expected: `ok: True`, `tools: 237`, `auth_enabled: True`.
+On a Mac:
+
+```bash
+curl -s -H 'ngrok-skip-browser-warning: 1' https://<your-domain>/healthz
+```
+
+Expected: `ok: True`, `tools: 242`, `auth_enabled: True`.
 
 `canvas-lms-mcp-remote cluster` (from any computer's settings folder) lists every computer and which one is serving, and the status page at `https://<your-domain>/status` shows the same. To move serving to the computer you're on, run `canvas-lms-mcp-remote takeover`. To make failover faster or slower, set `CANVAS_MCP_FAILOVER_SECONDS` (default 50) in every computer's `.env`.
 
@@ -212,6 +234,13 @@ Expected: `ok: True`, `tools: 237`, `auth_enabled: True`.
 Stop-ScheduledTask -TaskName CanvasSupervisor -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'supervisor\.js|index\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+On a Mac, in Terminal:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
 ```
 
 Within about 1 to 1.5 minutes, the other computer's `supervisor.log` should show:
@@ -230,6 +259,12 @@ Ask your assistant something about Canvas. It should still work, without logging
 
 ```powershell
 Start-ScheduledTask -TaskName CanvasSupervisor
+```
+
+On a Mac:
+
+```bash
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
 ```
 
 It should report that the other computer is already active and settle into **standby** without interrupting anything. Then repeat the test the other way round.
@@ -267,6 +302,17 @@ Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 Start-ScheduledTask -TaskName CanvasSupervisor
 ```
+
+On a Mac, in Terminal:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
+sleep 1
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+```
+
+With version 1.3.0 or newer installed from npm, `canvas-lms-mcp-remote restart` from your settings folder does the same on both systems.
 
 ## Updating the code on every computer
 

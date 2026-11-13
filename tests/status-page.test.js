@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import { createOAuthProvider } from '../oauth-provider.js';
-import { createStatusRouter } from '../status-page.js';
+import { createStatusRouter, dashboardPage } from '../status-page.js';
 
 const PASSWORD = 'status-pass-123456';
 const status = async () => ({ hostname: 'study-pc', sessions: [] });
@@ -26,6 +26,12 @@ async function serve({ auth } = {}) {
 }
 const cookieOf = (res) => res.headers.get('set-cookie').split(';')[0];
 const signedIn = (html) => /Canvas server status<\/h1><form method="POST" action="\/status\/logout"/.test(html);
+
+test('the status page shows which tool profile is on and how many tools that is', () => {
+  const html = dashboardPage({ hostname: 'study-pc', version: '1.5.0', tools: 36, profile: 'study', profile_title: 'Study and planning <b>', sessions: [] }, 'csrf');
+  assert.match(html, /<dt>Tools<\/dt><dd>Study and planning &lt;b&gt; \(36\)/);
+  assert.match(dashboardPage({ hostname: 'pc', version: '1.4.1', tools: 237, sessions: [] }, 'csrf'), /<dt>Tools<\/dt><dd>Everything \(237\)/, 'an older server that sends no profile has every tool');
+});
 
 test('Lock signs that session out everywhere, not just in this browser', async () => {
   const s = await serve();

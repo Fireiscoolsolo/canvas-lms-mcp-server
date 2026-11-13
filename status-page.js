@@ -57,7 +57,8 @@ export function dashboardPage(s, csrf, fmt = (t) => (t ? new Date(t).toLocaleStr
 <section><h2>Server</h2><dl>
 <dt>Status</dt><dd><span class="ok">Online</span>, served by <b>${esc(s.hostname)}</b></dd>
 <dt>Address</dt><dd>${esc(s.public_url)}</dd>
-<dt>Version</dt><dd>${esc(s.version)} &middot; ${esc(s.tools)} tools</dd>
+<dt>Version</dt><dd>${esc(s.version)}</dd>
+<dt>Tools</dt><dd>${esc(s.profile_title || 'Everything')} (${esc(s.tools)})</dd>
 <dt>Running since</dt><dd>${esc(fmt(s.started_at))} (${esc(s.uptime)})</dd>
 <dt>Tunnel</dt><dd>${esc(s.tunnel)}</dd></dl></section>
 <section><h2>Canvas</h2><dl>

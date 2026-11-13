@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { extractFileText, MAX_FILE_BYTES } from '../file-text.js';
 
 export default function register(ctx) {
-  const { readFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize } = ctx;
+  const { readFile, tool, get, canvas, ok, fail, pick, omitEmpty, fence, fenceProse, html2text, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, FILE_FIELDS, saveDownload, localize, activeCourses } = ctx;
 
   const J = 'content';
 
@@ -101,6 +101,76 @@ export default function register(ctx) {
   tool({ name: 'mark_module_item_done', group: J, write: true, description: 'Mark a module item as done, satisfying a must_mark_done completion requirement.', schema: { course_id: COURSE, module_id: ID, item_id: ID }, handler: async (a) => ok(await canvas.put(`/courses/${a.course_id}/modules/${a.module_id}/items/${a.item_id}/done`), 'Marked done.') });
   tool({ name: 'mark_module_item_read', group: J, write: true, description: 'Mark a module item as viewed, satisfying a must_view completion requirement.', schema: { course_id: COURSE, module_id: ID, item_id: ID }, handler: async (a) => ok(await canvas.post(`/courses/${a.course_id}/modules/${a.module_id}/items/${a.item_id}/mark_read`), 'Marked read.') });
   tool({ name: 'select_mastery_path', group: J, write: true, confirm: true, description: 'Choose a mastery path branch on a module item, where conditional release is enabled.', schema: { course_id: COURSE, module_id: ID, item_id: ID, assignment_set_id: ID }, handler: async (a) => ok(await canvas.post(`/courses/${a.course_id}/modules/${a.module_id}/items/${a.item_id}/select_mastery_path`, { assignment_set_id: a.assignment_set_id })) });
+  // What a module item needs before Canvas counts it as done, in plain words.
+  const TO_FINISH = {
+    must_view: () => 'Open it',
+    must_mark_done: () => 'Mark it done (mark_module_item_done)',
+    must_submit: () => 'Turn it in',
+    must_contribute: () => 'Post in it',
+    min_score: (r) => `Score at least ${r.min_score}`,
+  };
+
+  tool({
+    name: 'next_module_items', group: J,
+    description: 'Where you are in each course\'s modules and the next items you still have to do, with what each needs and what is locked.',
+    schema: {
+      course_id: COURSE.optional().describe('Only this course. Leave empty for your active courses (up to 10).'),
+      per_course: z.number().int().positive().max(10).optional().describe('How many next items to show for each course. Default 3.'),
+    },
+    handler: async (a, { progress }) => {
+      const want = a.per_course || 3;
+      const all = a.course_id ? [await canvas.get(`/courses/${a.course_id}`, null, { ttl: 300000 })] : await activeCourses(40);
+      const courses = all.slice(0, 10);
+      const out = [];
+      for (const [i, c] of courses.entries()) {
+        progress(i, courses.length, `Reading modules in ${c.name || c.id}`);
+        let modules;
+        try {
+          modules = await canvas.paginate(`/courses/${c.id}/modules`, { include: ['items', 'content_details'], per_page: 50 }, { max: 100, ttl: 300000 });
+        } catch (e) {
+          out.push({ course: c.name, course_id: c.id, note: `Couldn't read modules: ${e.message}` });
+          continue;
+        }
+        if (!modules.length) { out.push({ course: c.name, course_id: c.id, note: 'This course has no modules.' }); continue; }
+        modules.sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
+        const names = new Map(modules.map((m) => [String(m.id), m.name]));
+        const done = modules.filter((m) => m.state === 'completed').length;
+        const current = modules.find((m) => m.state !== 'completed');
+        const next = [];
+        let tracked = false;
+        for (const m of modules) {
+          if (m.state === 'completed' || next.length >= want) continue;
+          // Canvas leaves the items out of a big module, so ask for them.
+          const items = m.items || await canvas.paginate(`/courses/${c.id}/modules/${m.id}/items`, { include: ['content_details'] }, { max: 100, ttl: 300000 }).catch(() => []);
+          for (const it of items) {
+            const r = it.completion_requirement;
+            if (r) tracked = true;
+            if (!r || r.completed || next.length >= want) continue;
+            const d = it.content_details || {};
+            const locked = m.state === 'locked' || d.locked_for_user === true;
+            const waits = (m.prerequisite_module_ids || []).map((id) => names.get(String(id))).filter(Boolean);
+            next.push(omitEmpty({
+              module: m.name, module_id: m.id, item_id: it.id, title: it.title, type: it.type,
+              to_finish: (TO_FINISH[r.type] || (() => r.type))(r),
+              due: d.due_at ? localize(d.due_at) : undefined, due_at: d.due_at, points_possible: d.points_possible,
+              locked: locked || undefined,
+              locked_until: locked ? [m.unlock_at && `opens ${localize(m.unlock_at)}`, waits.length && `finish ${waits.join(', ')} first`, d.lock_explanation && html2text(d.lock_explanation)].filter(Boolean).join('; ') || 'locked' : undefined,
+              url: it.html_url,
+            }));
+          }
+        }
+        out.push(omitEmpty({
+          course: c.name, course_id: c.id, current_module: current?.name || 'All modules are done',
+          modules_done: `${done} of ${modules.length}`, next,
+          note: tracked ? undefined : 'This course doesn\'t track module progress, so there is nothing to tick off.',
+        }));
+      }
+      progress(courses.length, courses.length);
+      const skipped = all.length - courses.length;
+      return ok(fenceProse({ courses: out }, 'course modules'), skipped > 0 ? `Showing the first 10 of ${all.length} courses. Ask about one course for the rest.` : null);
+    },
+  });
+
   get({ name: 'get_module_item_sequence', group: J, description: 'Previous/next navigation around a piece of content, showing where it sits in the module sequence.', path: (a) => `/courses/${a.course_id}/module_item_sequence`, schema: { course_id: COURSE, asset_type: z.enum(['ModuleItem', 'File', 'Page', 'Discussion', 'Assignment', 'Quiz', 'ExternalTool']), asset_id: ID }, params: (a) => ({ asset_type: a.asset_type, asset_id: a.asset_id }) });
 
   get({ name: 'list_media_objects', group: J, description: 'Media objects (recorded lectures, video/audio) in a course.', path: (a) => `/courses/${a.course_id}/media_objects`, schema: { course_id: COURSE, limit: LIMIT }, paginate: true, fields: ['media_id', 'title', 'media_type', 'can_add_captions', 'media_tracks'] });

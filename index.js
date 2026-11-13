@@ -204,6 +204,7 @@ async function main() {
     const token = tokenWatch.info();
     return {
       hostname: os.hostname(), public_url: PUBLIC_URL, version: VERSION, tools: registry.length,
+      profile: cfg.profile, profile_title: cfg.profileTitle,
       started_at: START_TIME, uptime: humanDuration(Date.now() - Date.parse(START_TIME)),
       tunnel: process.env.CANVAS_MCP_TUNNEL || 'ngrok',
       base_url: cfg.base, canvas_user: me?.name || null,
@@ -346,7 +347,7 @@ async function main() {
   const fromThisComputer = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
     && !req.headers['x-forwarded-for'] && !req.headers['cf-connecting-ip'] && !req.headers.forwarded;
   app.get('/healthz', (req, res) => res.json(fromThisComputer(req)
-    ? { ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION }
+    ? { ok: true, tools: registry.length, auth_enabled: AUTH_ENABLED, version: VERSION, profile: cfg.profile }
     : { ok: true, tools: registry.length }));
 
   app.listen(PORT, HOST, () => {

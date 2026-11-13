@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Fireiscoolsolo/canvas-lms-mcp-server",
-  "description": "Self-hosted Canvas LMS for every device: 237 student tools over HTTP with OAuth and phone alerts.",
+  "description": "Self-hosted Canvas LMS for every device: 242 student tools over HTTP with OAuth and phone alerts.",
   "repository": {
     "url": "https://github.com/Fireiscoolsolo/canvas-lms-mcp-server",
     "source": "github"
   },
   "websiteUrl": "https://fireiscoolsolo.github.io/canvas-lms-mcp-server/",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "canvas-lms-mcp-remote",
-      "version": "1.4.1",
+      "version": "1.5.0",
       "transport": {
         "type": "stdio"
       },
@@ -34,6 +34,13 @@
           "name": "CANVAS_BASE_URL",
           "description": "Your school's Canvas address, e.g. https://yourschool.instructure.com",
           "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "CANVAS_PROFILE",
+          "description": "Optional. Which tools to turn on, by name or number: 1 essentials, 2 core, 3 study, 4 grades, 5 readonly, 6 full. Not set means full, every tool",
+          "isRequired": false,
           "isSecret": false,
           "format": "string"
         }

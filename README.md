@@ -1,5 +1,5 @@
 > [!TIP]
-> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 237 tools, with no tunnel, no password and a one-command setup.
+> **Want it to run locally, on just your own computer?** Go to the **[Local Edition →](https://github.com/Fireiscoolsolo/canvas-lms-mcp-local)** ([website](https://fireiscoolsolo.github.io/canvas-lms-mcp-local/)). It has the same 242 tools, with no tunnel, no password and a one-command setup.
 
 <div align="center">
 
@@ -12,7 +12,7 @@
 
 **Use Canvas from your AI assistant on any device: web, desktop and mobile. Always on, password-protected, with automatic failover across several computers.**
 
-237 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
+242 tools · OAuth 2.1 · Status page · Phone alerts · ngrok or Cloudflare tunnel · Multi-computer failover
 
 [![npm](https://img.shields.io/npm/v/canvas-lms-mcp-remote?logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
 [![npm downloads](https://img.shields.io/npm/dt/canvas-lms-mcp-remote?label=npm%20downloads&logo=npm&color=CB3837)](https://www.npmjs.com/package/canvas-lms-mcp-remote)
@@ -68,7 +68,7 @@
           │  HTTPS + OAuth
           ▼
    your-domain.ngrok-free.dev ──►  supervisor.js  ──►  index.js (127.0.0.1:3939/mcp)  ──►  Canvas API
-   (or a Cloudflare hostname)      (keeps it alive,     (237 tools, OAuth, status page,
+   (or a Cloudflare hostname)      (keeps it alive,     (242 tools, OAuth, status page,
                                     failover)            phone alerts)
 ```
 
@@ -113,6 +113,7 @@ That folder is your **settings folder**. It holds your `.env`, logins and logs, 
 | `canvas-lms-mcp-remote totp-setup` / `totp-off` | Turn two-factor codes on or off |
 | `canvas-lms-mcp-remote cluster` | List the computers in your group |
 | `canvas-lms-mcp-remote takeover` | Make this computer the one that serves |
+| `canvas-lms-mcp-remote profile [name]` | Show the [tool profiles](#tool-profiles), or switch to one (then restart) |
 | `canvas-lms-mcp-remote uninstall` | Stop it, remove the startup service and say how to remove the package |
 | `canvas-lms-mcp-remote --stdio` | Serve over stdin/stdout, for directories that inspect servers |
 
@@ -185,6 +186,8 @@ Start-ScheduledTask -TaskName CanvasSupervisor
 `run-supervisor.cmd` assumes Node is at `C:\Program Files\nodejs\node.exe`. If yours is somewhere else, edit that file.
 </details>
 
+On a Mac, `install-service` creates a launch agent in `~/Library/LaunchAgents`. A Mac that sleeps stops serving, and another computer in your group takes over. To keep it awake while it's plugged in, turn on **Prevent automatic sleeping on power adapter when the display is off** (System Settings → Battery → Options; on a desktop Mac, System Settings → Energy).
+
 ### 7. Connect your AI app, on every device
 In your AI app's settings, add a **custom connector** (also called a *remote MCP server*) with the URL `https://<your-domain>/mcp`, then log in with your password. Apps that sync connectors to your account will show it on your phone and desktop too. Command-line and editor clients can add it as an **HTTP** MCP server with the same URL.
 
@@ -245,11 +248,12 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 | `CANVAS_MCP_CLOUDFLARED_TOKEN` | | — | Tunnel token from the Cloudflare dashboard |
 | `CANVAS_MCP_FAILOVER_SECONDS` | | `50` | How long the serving computer can be silent before another takes over |
 | `CANVAS_ALLOW_WRITES` | | `true` | `false` (or `0`, `no`, `off`) = nothing in Canvas can change. A value it can't read stops the server |
-| `CANVAS_PROFILE` | | `full` | `core` = curated subset of tools. A value it can't read stops the server |
+| `CANVAS_PROFILE` | | `full` | Which tools to turn on, by name or number: see [Tool profiles](#tool-profiles). A value it can't read stops the server |
 | `CANVAS_TOOLS` / `CANVAS_DISABLE_TOOLS` | | all / — | Only these tool groups or tools, or leave these out |
 | `CANVAS_CACHE_TTL` | | `60` | Response cache time in seconds |
 | `CANVAS_TIMEZONE` | | system | IANA time zone for dates, digests and quiet hours |
 | `CANVAS_DOWNLOAD_DIR` | | `./canvas-downloads` | Where download tools save files. They can't save anywhere outside it |
+| `CANVAS_CHANGE_LOG` | | `on` | `off` stops keeping the list of what the server changed in Canvas (`get_change_log`). It keeps IDs only, never what you wrote |
 | `CANVAS_IP_FAMILY` | | both | `4` or `6` uses only that kind of address. Worth trying if new connections time out |
 | `CANVAS_MCP_HOST` / `_PORT` | | `127.0.0.1` / `3939` | Bind address |
 | `CANVAS_MCP_OAUTH_STORE_PATH` | | `./oauth-store.json` | Token store |
@@ -259,32 +263,53 @@ All settings are environment variables in `.env`. See [`.env.example`](.env.exam
 
 Phone-alert settings are listed in [Phone alerts](#phone-alerts).
 
+### Tool profiles
+
+Fewer tools can help an AI app pick the right one. Set `CANVAS_PROFILE` in `.env` to a name or number, such as `CANVAS_PROFILE=study` or `CANVAS_PROFILE=3`, then run `canvas-lms-mcp-remote restart`. Or run `canvas-lms-mcp-remote profile study`: it checks the name, backs up `.env` and saves it.
+
+<!-- profiles:start -->
+| Number | Name | What it's for | Tools |
+|:-:|---|---|:-:|
+| 1 | `essentials` | The daily basics: what's due, your grades, announcements and reading an assignment. Nothing here changes Canvas. Best for small local models. | 24 |
+| 2 | `core` | A bit of everything, including turning in work and sending messages. | 49 |
+| 3 | `study` | Planning your week and studying: planner, calendar, study plans, course files and pages. | 38 |
+| 4 | `grades` | Grades and feedback: scores, what-if, what you need on the final, rubrics and comments. | 31 |
+| 5 | `readonly` | Everything that only looks. Nothing in Canvas can change. | 177 |
+| 6 | `full` | Every tool. The default. | 242 |
+<!-- profiles:end -->
+
+- Not set means `full`: every tool, as before.
+- `CANVAS_TOOLS` and `CANVAS_DISABLE_TOOLS` narrow any profile further. They never add a tool the profile leaves out.
+- `essentials` and `readonly` never change anything in Canvas, even with `CANVAS_ALLOW_WRITES=true`. `CANVAS_ALLOW_WRITES=false` turns changes off in every profile.
+- Use the same profile on every computer in a group, or the tools change when another computer takes over.
+- Names other than `full` and `core` need version 1.5.0 or newer. An older version can't read them and won't start.
+
 ## Tools
 
 | Group | Count | Highlights |
 |---|:-:|---|
-| Identity | 27 | `check_token_expiry`, notification preferences, custom-data storage |
+| Identity | 28 | `list_recent_history`, `check_token_expiry`, notification preferences, custom-data storage |
 | Courses | 17 | `course_contacts` (teachers, TAs, office hours), permissions, nicknames |
 | Assignments | 13 | `assignment_brief`, `list_missing_submissions`, `get_late_policy` |
-| Submissions | 17 | text, URL, file and annotation submission, comments, rubric assessments |
+| Submissions | 18 | `recent_feedback`, text, URL, file and annotation submission, comments, rubric assessments |
 | Grades | 15 | `final_grade_scenarios`, `what_if_grade`, `compute_needed_score`, `grade_impact_ranking`, `calculate_gpa` |
 | Quizzes | 12 | read-only: dates, attempts, reviews |
 | Discussions | 21 | `get_full_topic_view`, replies, school-wide announcements, mark announcements read |
 | Inbox | 14 | messaging, `find_recipients`, threads |
 | Calendar | 11 | events, office-hours booking |
-| Content | 36 | files, pages, modules, captions, ePortfolios, `read_course_file` for PDF, Word and PowerPoint, course export |
+| Content | 37 | `next_module_items`, files, pages, modules, captions, ePortfolios, `read_course_file` for PDF, Word and PowerPoint, course export |
 | Groups | 11 | group workspaces |
 | Rubrics | 11 | peer reviews |
 | Search | 3 | `smart_search` with keyword fallback |
 | Planner | 12 | `daily_briefing`, planner notes, `mark_planner_item_done`, `study_plan`, `export_deadlines_ics`, calendar feed |
-| Planning | 13 | `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, `semester_wrap_up`, `export_all_courses` |
-| Meta | 4 | `raw_canvas_request` for any endpoint not listed above |
+| Planning | 14 | `find_exams`, `get_week_ahead`, `semester_snapshot`, `study_priority_ranking`, `semester_wrap_up`, `export_all_courses` |
+| Meta | 5 | `get_change_log`, `raw_canvas_request` for any endpoint not listed above |
 
 ### Prompts and attachments
 
 The server also adds these to your AI app's menus. They don't count as tools.
 
-- **Prompts**: *Daily briefing*, *Plan my week*, *Plan my study blocks*, *What did I miss?*, *Start this assignment*, *Prep me for an exam*, *How are my grades?*, *Am I on track to pass?*, *Catch me up on a course*, *Draft an email to my professor* and *Semester wrap-up*. Each one tells the assistant which tools to use, and course names autocomplete.
+- **Prompts**: *Daily briefing*, *Plan my week*, *Plan my study blocks*, *What did I miss?*, *Start this assignment*, *Prep me for an exam*, *How are my grades?*, *Am I on track to pass?*, *Catch me up on a course*, *Draft an email to my professor*, *Semester wrap-up*, *Quiz me*, *Check my draft*, *Weekly review* and *What does my feedback say?* Each one tells the assistant which tools to use, and course names autocomplete. A prompt only shows up when the [tool profile](#tool-profiles) has every tool it uses.
 - **Attachments**: attach a course syllabus, or an assignment due in the next 14 days, to a chat the same way you'd attach a file.
 
 Apps that support MCP prompts and resources, such as Claude Desktop, show them in the **+** menu.
@@ -366,6 +391,7 @@ Start with **`canvas-lms-mcp-remote doctor`** in your settings folder: it checks
 | "Your Canvas token was rejected" | Your token expired. Create a new one and put it in `.env` |
 | Reading works but uploads or new connections time out | Run `doctor` on that computer: its Network section times DNS and tests every connection. The server works around a slow DNS lookup by itself, so if a connection still fails, look for a VPN, proxy or firewall |
 | "File not found on the computer running this server" | The server reads files from its own disk, so the path must exist on the computer named in the error, not the one you're chatting from |
+| Your AI app struggles with so many tools | Pick a smaller [tool profile](#tool-profiles): in your settings folder, run `canvas-lms-mcp-remote profile essentials` (or `1`), then `canvas-lms-mcp-remote restart`. Use the same profile on every computer in your group |
 | New tools don't show up | Reconnect the connector or restart your AI app |
 | `supervisor.log` keeps growing | Run `canvas-lms-mcp-remote install-service` again to switch to the rotating log |
 
@@ -377,6 +403,12 @@ Stop-ScheduledTask -TaskName CanvasSupervisor -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'supervisor\.js|index\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-ScheduledTask -TaskName CanvasSupervisor
+```
+On a Mac, in Terminal:
+```bash
+launchctl unload ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
+pkill -f 'supervisor\.js|index\.js|canvas-lms-mcp-remote'; pkill ngrok
+launchctl load -w ~/Library/LaunchAgents/io.github.fireiscoolsolo.canvas-mcp-remote.plist
 ```
 
 **Known limits:** a student token can't reach admin endpoints, gradebook history, course analytics or quiz statistics. `smart_search` is a Canvas beta feature and often returns 404. While the server is reached over the tunnel, apps get a preview before actions instead of a pop-up confirmation.

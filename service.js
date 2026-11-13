@@ -54,8 +54,32 @@ export function launchdPlist({ dir, node = process.execPath, cli = CLI }) {
 `;
 }
 
+const unxml = (s) => String(s ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+/**
+ * The launch agent as macOS has it: the folder and Node from its plist, and its state from `launchctl print`
+ * ("running", "not running", or "not loaded" when launchd doesn't know it). Tests pass made-up readers.
+ */
+function macService({ exists, read, launchctl, uid }) {
+  const file = plistFile();
+  if (!exists(file)) return { installed: false, kind: 'launch agent', name: LABEL, file };
+  let plist = '';
+  try { plist = read(file); } catch { /* unreadable: report what we can */ }
+  const args = [...(/<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)?.[1] || '').matchAll(/<string>([^<]*)<\/string>/g)].map((m) => unxml(m[1]));
+  const dir = /<key>WorkingDirectory<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1];
+  const printed = launchctl(['print', `gui/${uid}/${LABEL}`]);
+  const state = printed.status === 0 ? (/^\s*state = (.+)$/m.exec(printed.stdout || '')?.[1]?.trim() || 'loaded') : 'not loaded';
+  return { installed: true, kind: 'launch agent', name: LABEL, file, dir: dir === undefined ? undefined : unxml(dir), node: args[0], state };
+}
+
+/** A warning when the startup service runs a Node that is no longer there (an nvm or Homebrew upgrade removes it), else null. */
+export function staleNode(svc, exists = fs.existsSync) {
+  if (!svc?.installed || !svc.node || exists(svc.node)) return null;
+  return `The startup service runs Node from ${svc.node}, which isn't there any more (updating Node with nvm or Homebrew can remove it), so it won't start. Run "canvas-lms-mcp-remote install-service" again.`;
+}
+
 /** Whether the startup service exists, and on Windows whether it still uses the old cmd redirect (no log rotation). */
-export function serviceInfo({ name = TASK_NAME, platform = process.platform } = {}) {
+export function serviceInfo({ name = TASK_NAME, platform = process.platform, exists = fs.existsSync, read = (f) => fs.readFileSync(f, 'utf8'), launchctl = (args) => run('launchctl', args), uid = os.userInfo().uid } = {}) {
   if (platform === 'win32') {
     const r = ps("$t = Get-ScheduledTask -TaskName $env:CMS_TASK -ErrorAction SilentlyContinue; if ($t) { [pscustomobject]@{ state = [string]$t.State; exe = $t.Actions[0].Execute; args = $t.Actions[0].Arguments; dir = $t.Actions[0].WorkingDirectory } | ConvertTo-Json -Compress }", { CMS_TASK: name });
     try {
@@ -63,7 +87,7 @@ export function serviceInfo({ name = TASK_NAME, platform = process.platform } = 
       return { installed: true, kind: 'Windows scheduled task', name, state: j.state, dir: j.dir, oldLog: /supervisor\.log/i.test(`${j.args}`) && !/--log-file/.test(`${j.args}`) };
     } catch { return { installed: false, kind: 'Windows scheduled task', name }; }
   }
-  if (platform === 'darwin') return { installed: fs.existsSync(plistFile()), kind: 'launch agent', name: LABEL, file: plistFile() };
+  if (platform === 'darwin') return macService({ exists, read, launchctl, uid });
   const r = run('systemctl', ['--user', 'is-enabled', UNIT]);
   return { installed: fs.existsSync(unitFile()), enabled: r.status === 0, kind: 'systemd user service', name: UNIT, file: unitFile() };
 }
@@ -87,6 +111,8 @@ export function installService({ dir, name = TASK_NAME, platform = process.platf
   if (platform === 'darwin') {
     fs.mkdirSync(path.dirname(plistFile()), { recursive: true });
     fs.writeFileSync(plistFile(), launchdPlist({ dir }));
+    // Apple prefers `launchctl bootstrap gui/<uid>` now, but `load` and `unload` still work for a launch agent in your
+    // own folder. They stay until someone can check bootstrap on a real Mac.
     run('launchctl', ['unload', plistFile()]);
     const r = run('launchctl', ['load', '-w', plistFile()]);
     if (r.status !== 0) throw new Error(`launchctl couldn't load the agent: ${firstLine(r)}`);

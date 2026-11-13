@@ -282,7 +282,7 @@ test('every spelling of "no writes" turns writes off, and every spelling of "yes
   for (const v of [undefined, '', '   ', 'true', 'TRUE', '1', 'yes', 'on', '${user_config.allow_writes}']) {
     const r = await toolsWith(v === undefined ? {} : { CANVAS_ALLOW_WRITES: v });
     assert.equal(r.writes, 65, `${JSON.stringify(v)} must leave writes on`);
-    assert.equal(r.tools, 237);
+    assert.equal(r.tools, 242);
   }
 });
 
@@ -298,7 +298,7 @@ test('a value nobody can read fails closed and says why', async () => {
 
 test('the profile setting is trimmed, and an unknown one means the smaller set', async () => {
   for (const v of ['core', 'CORE', 'Core ', ' core']) assert.equal((await toolsWith({ CANVAS_PROFILE: v })).tools, 49, JSON.stringify(v));
-  for (const v of [undefined, 'full', ' FULL ', '${user_config.profile}']) assert.equal((await toolsWith(v === undefined ? {} : { CANVAS_PROFILE: v })).tools, 237, JSON.stringify(v));
+  for (const v of [undefined, 'full', ' FULL ', '${user_config.profile}']) assert.equal((await toolsWith(v === undefined ? {} : { CANVAS_PROFILE: v })).tools, 242, JSON.stringify(v));
   for (const v of ['cor', 'minimal']) {
     const r = await toolsWith({ CANVAS_PROFILE: v });
     assert.equal(r.tools, 49, `${v} must not serve everything`);

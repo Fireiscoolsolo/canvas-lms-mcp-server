@@ -1,10 +1,24 @@
 // Meta. Registered by core/index.js; ctx carries the shared client, helpers and config.
 import { z } from 'zod';
+import { PROFILES, profileIncludes, profileChoices } from '../profiles.js';
 
 export default function register(ctx) {
-  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, skipped, unknownNames, tokenWatch, localize, cfg, state, elicitation } = ctx;
+  const { tool, canvas, ok, fail, TOKEN, BASE, API, ALLOW_WRITES, PROFILE, TZ, CACHE_TTL, DOWNLOAD_DIR, SERVER_NAME, SERVER_VERSION, registry, leftOut, catalog, skipped, unknownNames, tokenWatch, localize, cfg, state, elicitation, changeLog } = ctx;
 
   const O = 'meta';
+
+  const inProfiles = (t) => PROFILES.filter((p) => profileIncludes(p, t)).map((p) => p.id);
+  const profileFacts = { profile: PROFILE, profile_number: cfg.profileNumber, profile_title: cfg.profileTitle };
+  const SWITCH = `set CANVAS_PROFILE to one name or number (${profileChoices()}) where this server's settings are (the AI app's Canvas settings, or .env for the Remote server), then restart the AI app (for Remote: canvas-lms-mcp-remote restart)`;
+  /** One plain sentence on how to turn on what the given reasons switched off. */
+  const howToSwitch = (reasons) => [
+    reasons.has('profile') && `The ${cfg.profileTitle} profile leaves some tools out: to turn them on, ${SWITCH}.`,
+    reasons.has('writes') && 'CANVAS_ALLOW_WRITES=false turns off every tool that changes Canvas.',
+    reasons.has('disabled') && 'CANVAS_DISABLE_TOOLS leaves some out.',
+    reasons.has('filter') && 'CANVAS_TOOLS only turns on the groups and tools it names.',
+  ].filter(Boolean).join(' ');
+  const writesOffBecause = () => (ALLOW_WRITES ? undefined
+    : cfg.writesSetting ? `the ${cfg.profileTitle} profile only reads` : 'CANVAS_ALLOW_WRITES is false');
 
   tool({
     name: 'raw_canvas_request', group: O,
@@ -25,7 +39,11 @@ export default function register(ctx) {
     handler: async (a) => {
       const m = a.method.toUpperCase();
       canvas.check(m, a.path, a.params);
-      if (m !== 'GET' && !ALLOW_WRITES) return fail('Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
+      if (m !== 'GET' && !ALLOW_WRITES) {
+        return fail(cfg.writesSetting
+          ? `Write methods are off because the ${cfg.profileTitle} profile (CANVAS_PROFILE=${PROFILE}) only reads. Pick a profile that can make changes to use them.`
+          : 'Write methods are disabled. Set CANVAS_ALLOW_WRITES=true to enable.');
+      }
       if (m === 'GET') {
         const data = a.paginate ? await canvas.paginate(a.path, a.params, { max: a.max_items || 200, ttl: 0 }) : await canvas.get(a.path, a.params, { ttl: 0 });
         return ok(data);
@@ -43,8 +61,19 @@ export default function register(ctx) {
     schema: { query: z.string().optional(), group: z.string().optional() },
     handler: async (a) => {
       const q = (a.query || '').toLowerCase();
-      const rows = registry.filter((t) => (!a.group || t.group === a.group) && (!q || t.name.includes(q) || t.description.toLowerCase().includes(q)));
-      return ok({ total_registered: registry.length, matches: rows.length, groups: [...new Set(registry.map((t) => t.group))], tools: rows.map((t) => ({ name: t.name, group: t.group, write: t.write, confirm_required: t.confirm, description: t.description.slice(0, 140) })) });
+      const matches = (t) => (!a.group || t.group === a.group) && (!q || t.name.includes(q) || t.description.toLowerCase().includes(q));
+      const rows = registry.filter(matches);
+      // Only a real search lists what is switched off: a list of everything would be mostly tools that aren't there.
+      const off = q || a.group ? leftOut.filter(matches) : [];
+      return ok({
+        total_registered: registry.length, matches: rows.length,
+        profile: { id: PROFILE, number: cfg.profileNumber, title: cfg.profileTitle },
+        groups: [...new Set(registry.map((t) => t.group))],
+        tools: rows.map((t) => ({ name: t.name, group: t.group, write: t.write, confirm_required: t.confirm, in_profiles: inProfiles(t), description: t.description.slice(0, 140) })),
+        switched_off: off.length ? off.slice(0, 20).map((t) => ({ name: t.name, group: t.group, why: t.why, in_profiles: inProfiles(t) })) : undefined,
+        switched_off_total: off.length > 20 ? off.length : undefined,
+        how_to_switch: off.length ? howToSwitch(new Set(off.map((t) => t.why))) : undefined,
+      });
     },
   });
 
@@ -63,11 +92,26 @@ export default function register(ctx) {
       }
       const token = await tokenWatch.check();
       return ok({
-        base_url: BASE, api_root: API, writes_enabled: ALLOW_WRITES, profile: PROFILE,
+        base_url: BASE, api_root: API, writes_enabled: ALLOW_WRITES, ...profileFacts,
         tools_registered: registry.length, tools_skipped: skipped(), timezone: TZ,
         token: token?.expires_at ? { expires: localize(token.expires_at), days_left: Math.floor((new Date(token.expires_at) - Date.now()) / 86400000) } : token ? { expires: 'never' } : 'Could not read the token\'s expiry (your school may hide it).',
         rate_limit: { last_cost: canvas.lastCost, remaining: canvas.lastRemaining },
         checks: results,
+      });
+    },
+  });
+
+  tool({
+    name: 'get_change_log', group: O, offline: true,
+    description: 'What this server changed in Canvas, newest first: when, which tool, which course or item, whether it went through, and how it was confirmed.',
+    schema: { limit: z.number().int().positive().max(200).optional().describe('How many changes to show. Default 25.') },
+    handler: async (a) => {
+      const changes = changeLog.read(a.limit || 25).map((e) => ({ when: localize(e.at), at: e.at, tool: e.tool, outcome: e.outcome, confirmed_by: e.confirmed_by, ids: e.ids }));
+      return ok({
+        recording: changeLog.on, kept_in: changeLog.file || 'memory, for this run only', count: changes.length, changes,
+        note: changeLog.on
+          ? 'Only IDs are kept: never message text, file paths or anything Canvas sent back. Reading is never recorded.'
+          : 'Recording is off because CANVAS_CHANGE_LOG is off. Remove that setting to turn it back on.',
       });
     },
   });
@@ -80,7 +124,11 @@ export default function register(ctx) {
       base_url: BASE || '(unset)', api_root: API || '(unset)',
       token_present: Boolean(TOKEN), token_source: cfg.tokenSource, token_problem: cfg.tokenError || undefined,
       settings_problem: cfg.settingsProblem || undefined,
-      writes_enabled: ALLOW_WRITES, profile: PROFILE,
+      writes_enabled: ALLOW_WRITES, writes_off_because: writesOffBecause(),
+      ...profileFacts,
+      tools_left_out_by_profile: leftOut.filter((t) => t.why === 'profile').length,
+      profiles: PROFILES.map((p) => ({ number: p.number, id: p.id, title: p.title, tools: catalog().filter((t) => profileIncludes(p, t)).length })),
+      how_to_switch: `To change which tools are on, ${SWITCH}.`,
       tool_filter: cfg.tools ? [...cfg.tools] : 'all groups', tools_left_out: cfg.disabled.size ? [...cfg.disabled] : undefined,
       unknown_tool_names: unknownNames().length ? unknownNames() : undefined,
       confirmations: elicitation ? 'asked in the app when it supports it, otherwise a preview and a one-time token' : 'a preview and a one-time token',

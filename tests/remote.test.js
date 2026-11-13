@@ -263,7 +263,8 @@ test('HTTP with sign-in on: status page, cluster heartbeats and a health check t
     });
     const h = { Host: 'demo.example.dev' };
     const health = await jsonOf(await fetch(`http://127.0.0.1:${port}/healthz`, { headers: h }));
-    assert.deepEqual(Object.keys(health).sort(), ['auth_enabled', 'ok', 'tools', 'version']);
+    assert.deepEqual(Object.keys(health).sort(), ['auth_enabled', 'ok', 'profile', 'tools', 'version']);
+    assert.equal(health.profile, 'full');
     assert.equal(health.auth_enabled, true);
     assert.match(await (await fetch(`http://127.0.0.1:${port}/status`, { headers: h })).text(), /Enter your server password/);
     assert.equal((await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: h })).status, 403);
@@ -273,7 +274,7 @@ test('HTTP with sign-in on: status page, cluster heartbeats and a health check t
     assert.deepEqual(members.map((m) => m.state), ['active', 'standby']);
     assert.equal(members[1].hostname, 'laptop-2');
     const status = await jsonOf(await fetch(`http://127.0.0.1:${port}/internal/status`, { headers: secret }));
-    assert.equal(status.tools, 237);
+    assert.equal(status.tools, 242);
     assert.deepEqual(status.sessions, []);
     assert.ok(!JSON.stringify(status).includes('a-long-test-password') && !JSON.stringify(status).includes('test-token'));
     const meta = await jsonOf(await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`, { headers: h }));
@@ -284,6 +285,42 @@ test('HTTP with sign-in on: status page, cluster heartbeats and a health check t
     await exited;
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
+});
+
+test('"profile" shows the profiles, saves a good choice with a backup, and changes nothing for a bad one', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const dir = tmp();
+  const envFile = path.join(dir, '.env');
+  const cli = (...args) => spawnSync(process.execPath, [path.join(ROOT, 'cli.js'), 'profile', ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, CANVAS_PROFILE: '' } });
+  const backups = () => fs.readdirSync(dir).filter((f) => f.startsWith('.env.backup-'));
+  try {
+    const original = 'CANVAS_API_TOKEN=made-up\r\nCANVAS_BASE_URL=https://canvas.example.edu\r\n';
+    fs.writeFileSync(envFile, original);
+
+    const shown = cli();
+    assert.equal(shown.status, 0, shown.stderr);
+    for (const name of ['essentials', 'core', 'study', 'grades', 'readonly', 'full']) assert.match(shown.stdout, new RegExp(name));
+    assert.match(shown.stdout, /Everything/, 'not set means full');
+
+    for (const bad of ['banana', '02', 'study,grades', '7']) {
+      const r = cli(bad);
+      assert.equal(r.status, 1, bad);
+      assert.match(r.stderr, /essentials/, 'the message lists the choices');
+      assert.equal(fs.readFileSync(envFile, 'utf8'), original, `${bad} must leave .env byte-for-byte the same`);
+      assert.deepEqual(backups(), [], `${bad} must not make a backup`);
+    }
+
+    const good = cli('3');
+    assert.equal(good.status, 0, good.stderr);
+    assert.match(fs.readFileSync(envFile, 'utf8'), /^CANVAS_PROFILE=study$/m, 'the name is saved, never the number');
+    assert.equal(backups().length, 1);
+    assert.match(good.stdout, /restart/);
+    assert.match(cli().stdout, /Study and planning/);
+
+    const back = cli('full');
+    assert.equal(back.status, 0, back.stderr);
+    assert.doesNotMatch(fs.readFileSync(envFile, 'utf8'), /CANVAS_PROFILE/, 'full is the default, so the line goes');
+  } finally { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
 });
 
 test('an option value is never taken for the command', async () => {

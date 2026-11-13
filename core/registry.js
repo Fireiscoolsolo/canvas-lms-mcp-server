@@ -7,21 +7,10 @@ import { TOOL_DOCS, documentParams, titleFor } from './tool-docs.js';
 import { CanvasError, callContext, hideAddresses } from './canvas-client.js';
 import { ok, fail, pick, omitEmpty, addLocalDates, pageOf, capText, trimToFit, DEFAULT_PAGE_SIZE } from './format.js';
 import { applyFence, fenceComments, fenceProse } from './text.js';
+import { profileById } from './profiles.js';
 
-/** The curated subset served when CANVAS_PROFILE=core. */
-export const CORE_TOOLS = new Set([
-  'whoami', 'test_connection', 'check_token_expiry', 'raw_canvas_request', 'get_server_config',
-  'list_courses', 'get_course', 'get_syllabus', 'list_assignments', 'get_assignment', 'assignment_brief',
-  'list_missing_submissions', 'list_upcoming_assignments', 'list_overdue_assignments',
-  'get_my_submission', 'list_submission_comments', 'submit_assignment_text', 'submit_assignment_file',
-  'get_all_grades', 'get_course_grade_breakdown', 'what_if_grade', 'compute_needed_score', 'final_grade_scenarios',
-  'list_conversations', 'get_conversation', 'send_message', 'reply_to_conversation',
-  'list_topics', 'get_full_topic_view', 'post_entry', 'list_announcements',
-  'list_calendar_events', 'list_modules', 'list_module_items', 'list_course_files', 'read_course_file',
-  'get_media_captions', 'list_pages', 'get_page_content',
-  'get_week_ahead', 'daily_briefing', 'get_all_unread', 'course_health_check', 'semester_snapshot', 'study_priority_ranking',
-  'list_planner_items', 'create_planner_note', 'mark_planner_item_done', 'search_tools',
-]);
+/** The curated subset served when CANVAS_PROFILE=core. The list itself lives in core/profiles.js. */
+export const CORE_TOOLS = new Set(profileById('core').tools);
 
 // Always available, whatever CANVAS_TOOLS says, so the assistant can still find tools and diagnose problems.
 const ALWAYS = new Set(['search_tools', 'test_connection', 'get_server_config']);
@@ -69,7 +58,7 @@ export function confirmMessage(name, preview) {
 /** How long a tool that only reads may run. Longer than the 15 minutes a confirmation question waits for an answer. */
 export const TOOL_TIMEOUT_MS = 20 * 60000;
 
-export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {}, toolTimeoutMs = TOOL_TIMEOUT_MS }) {
+export function createRegistry({ server, canvas, cfg, dates, elicitation = true, notice = () => null, missingTokenHelp = '', log = () => {}, toolTimeoutMs = TOOL_TIMEOUT_MS, changeLog = null }) {
   const registry = [];
   const known = new Set();
   let skipped = 0;
@@ -86,12 +75,16 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   const LIMIT = z.number().int().positive().optional().describe('Max items to return');
   const PAGE = z.number().int().positive().optional().describe('Page of results');
 
-  function enabled(name, group, write) {
-    if (cfg.profile === 'core' && !CORE_TOOLS.has(name)) return false;
-    if (write && !cfg.allowWrites) return false;
-    if (cfg.disabled.has(name) || cfg.disabled.has(group)) return false;
-    if (cfg.tools && !ALWAYS.has(name) && !cfg.tools.has(name) && !cfg.tools.has(group)) return false;
-    return true;
+  // Every tool the settings leave out, with the reason, so search_tools can say what is switched off and how to turn it on.
+  const leftOut = [];
+
+  /** Why a tool is switched off: 'profile', 'writes' (CANVAS_ALLOW_WRITES), 'disabled' (CANVAS_DISABLE_TOOLS), 'filter' (CANVAS_TOOLS), or null. */
+  function whyOff(name, group, write) {
+    if (cfg.profileTools && !cfg.profileTools.has(name)) return 'profile';
+    if (write && !cfg.allowWrites) return cfg.writesSetting ? 'profile' : 'writes';
+    if (cfg.disabled.has(name) || cfg.disabled.has(group)) return 'disabled';
+    if (cfg.tools && !ALWAYS.has(name) && !cfg.tools.has(name) && !cfg.tools.has(group)) return 'filter';
+    return null;
   }
 
   function setupProblem() {
@@ -167,18 +160,21 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
    * preview comes back with a one-time token. The model sees that token, so it proves the request wasn't changed after
    * the preview, not that a person agreed: that still rests on the model showing the preview and on the app's own approval.
    */
-  async function confirmThenRun(name, handler, showPreview, args, extra, io) {
+  async function confirmThenRun(name, handler, showPreview, args, extra, io, track = {}) {
     const { confirm: _confirm, confirm_token: token, ...request } = args;
     if (token) canvas.cache.clear(); // the check below must see Canvas as it is now
     const details = (typeof showPreview === 'function' ? await showPreview(request, io) : null) || request;
     const run = async () => finish(await handler({ ...request, confirm: true }, io));
     const answer = await askToConfirm(name, details, extra);
+    if (answer !== 'unsupported') track.confirmed_by = 'asked in the app';
     if (answer === 'accept') return run();
-    if (answer === 'decline') return ok(details, 'Cancelled. Nothing was sent to Canvas.');
+    if (answer === 'decline') { track.outcome = 'cancelled'; return ok(details, 'Cancelled. Nothing was sent to Canvas.'); }
+    track.confirmed_by = 'preview and one-time token';
     const key = `${name}:${digest(request).toString('hex')}`;
     const state = digest(pick(details, TARGET_STATE)).toString('hex');
     const outcome = args.confirm === true && token ? redeem(key, token, state) : 'preview';
     if (outcome === 'ok') return run();
+    track.outcome = outcome === 'preview' ? 'preview' : 'refused';
     return ok(details, `${HEADINGS[outcome]}\nShow these details to the user and ask whether to go ahead. If they say yes, call ${name} again with the same arguments, confirm=true and confirm_token="${issueToken(key, state)}". It works once, for exactly this request, for ${TOKEN_MINUTES} minutes.`);
   }
 
@@ -217,9 +213,14 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   function tool({ name, description, schema = {}, handler, preview, write = false, confirm = false, group = '', offline = false, local = false, output }) {
     known.add(name);
     if (group) known.add(group);
-    if (!enabled(name, group, write)) { skipped++; return; }
-
     const doc = TOOL_DOCS[name] || {};
+    const why = whyOff(name, group, write);
+    if (why) {
+      skipped++;
+      leftOut.push({ name, group, write, confirm: Boolean(confirm), description: doc.description || description, why });
+      return;
+    }
+
     if (doc.description) description = doc.description;
     let shape = documentParams(schema, doc.params);
     let desc = description;
@@ -240,25 +241,36 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       ...(output ? { outputSchema: output } : {}),
       annotations: { ...annotationsFor({ name, write, confirm, offline, local }), ...doc.annotations },
     }, async (args = {}, extra = {}) => {
+      // How this call was confirmed and how it ended, for the change log. 'preview' and 'skip' changed nothing.
+      const asks = Boolean(gated(args));
+      const track = { outcome: null, confirmed_by: asks ? null : 'not needed' };
+      const changes = write || asks;
+      const recorded = (result) => {
+        if (changeLog && changes && !['preview', 'skip'].includes(track.outcome)) {
+          changeLog.record({ tool: name, outcome: track.outcome || (result?.isError ? 'failed' : 'done'), confirmed_by: track.confirmed_by || 'not asked', args });
+        }
+        return result;
+      };
       const run = async (signal) => {
         try {
           const bad = unsafeId(args);
-          if (bad) return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`);
+          if (bad) { track.outcome = 'refused'; return fail(`Refused: ${bad} isn't a Canvas ID, because IDs can't contain / \\ ? # or %. Nothing was sent.`); }
           if (!offline) {
             const problem = setupProblem();
-            if (problem) return fail(problem);
+            if (problem) { track.outcome = 'skip'; return fail(problem); }
           }
           const io = { progress: progressFor(extra), signal };
-          if (gated(args)) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io);
+          if (asks) return await confirmThenRun(name, handler, preview || handler.preview, args, extra, io, track);
           return finish(await handler(args, io));
         } catch (e) {
+          if (e?.code === 'BLOCKED') track.outcome = 'refused';
           if (e?.code !== 'STOPPED') logFailure(name, e);
           if (e instanceof CanvasError) return fail(e.message);
           return fail(`${name} failed: ${e.message}`);
         }
       };
       // A change to Canvas always runs to the end, so it never stops between its steps.
-      if (write) return callContext.run({ cut: [] }, () => run(extra.signal));
+      if (write) return recorded(await callContext.run({ cut: [] }, () => run(extra.signal)));
       // Anything else stops asking Canvas when the app gives up on it, or once it has run too long.
       const stop = new AbortController();
       const cancel = () => stop.abort();
@@ -274,7 +286,7 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
       });
       const work = callContext.run({ signal: stop.signal, cut: [] }, () => run(stop.signal));
       try {
-        return await Promise.race([work, ceiling]);
+        return recorded(await Promise.race([work, ceiling]));
       } finally {
         clearTimeout(timer);
         extra.signal?.removeEventListener?.('abort', cancel);
@@ -317,5 +329,8 @@ export function createRegistry({ server, canvas, cfg, dates, elicitation = true,
   /** Names in CANVAS_TOOLS and CANVAS_DISABLE_TOOLS that match no tool or group, so they did nothing. */
   const unknownNames = () => [...cfg.disabled, ...(cfg.tools || [])].filter((n) => !known.has(n));
 
-  return { tool, get, registry, skipped: () => skipped, unknownNames, ID, COURSE, LIMIT, PAGE };
+  /** Every tool this server has, on or off. Profile tool counts come from this, so they don't depend on other settings. */
+  const catalog = () => [...registry, ...leftOut];
+
+  return { tool, get, registry, leftOut, catalog, skipped: () => skipped, unknownNames, ID, COURSE, LIMIT, PAGE };
 }

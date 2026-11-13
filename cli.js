@@ -31,6 +31,7 @@ Running it
   canvas-lms-mcp-remote uninstall-service Stop starting it automatically
   canvas-lms-mcp-remote stop | restart    Stop the running supervisor, or stop and start it again
   canvas-lms-mcp-remote uninstall         Stop it, remove the startup service and say how to remove the package
+  canvas-lms-mcp-remote profile [name]    Show the tool profiles, or switch to one (then restart)
 
 Checking on it
   canvas-lms-mcp-remote status            Is it running, which computer is serving, who is signed in
@@ -86,7 +87,8 @@ async function stopLocal() {
     if (readState()?.state === 'stopped') return true;
   }
   fs.rmSync(path.join(DIR, 'stop.flag'), { force: true });
-  throw new Error(`The supervisor didn't stop within 20 seconds (it may be an older version that doesn't know "stop"). Stop it from Task Manager, then try again.`);
+  const byHand = { win32: 'End the "Node.js" task in Task Manager', darwin: 'Quit "node" in Activity Monitor' }[process.platform] || 'Stop it with: pkill -f supervisor.js';
+  throw new Error(`The supervisor didn't stop within 20 seconds (it may be an older version that doesn't know "stop"). ${byHand}, then try again.`);
 }
 
 const commands = {
@@ -110,7 +112,7 @@ const commands = {
     say(`This computer: ${s ? `${s.state} since ${when(s.since)} (version ${s.version}, tunnel ${s.tunnel})` : 'the supervisor has not run from this folder yet'}`);
     try {
       const local = await fetch(`http://127.0.0.1:${env.CANVAS_MCP_PORT || 3939}/healthz`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json());
-      say(`Local server: running, ${local.tools} tools`);
+      say(`Local server: running, ${local.tools} tools${local.profile ? ` (profile ${local.profile})` : ''}`);
     } catch { say('Local server: not running on this computer'); }
     try {
       const st = await internal(env, '/internal/status');
@@ -220,6 +222,36 @@ const commands = {
     const { setEnvValues } = await import('./env-file.js');
     setEnvValues(ENV_FILE, { CANVAS_MCP_TOTP_SECRET: null });
     say('Two-factor codes are off. Restart the server (canvas-lms-mcp-remote restart) to apply it.');
+  },
+
+  async profile() {
+    if (!fs.existsSync(ENV_FILE)) fail(`There is no .env in ${DIR}. Run this from your settings folder, or run "canvas-lms-mcp-remote init".`);
+    const { readEnv, setEnvValues } = await import('./env-file.js');
+    const { PROFILES, resolveProfile, profileIncludes, profileChoices, isUnset } = await import('./core/profiles.js');
+    // Read .env itself, not the environment, so a CANVAS_PROFILE set in this terminal can't hide what the file says.
+    const env = readEnv(ENV_FILE) || {};
+    const current = resolveProfile(env.CANVAS_PROFILE);
+    const want = rest[0];
+    if (want === undefined) {
+      const { createCanvasServer } = await import('./core/index.js');
+      const built = createCanvasServer({ env: {}, version: VERSION });
+      const all = [...built.registry, ...built.leftOut];
+      say(current
+        ? `Tool profile: ${current.title} (${current.id}, number ${current.number})${isUnset(env.CANVAS_PROFILE) ? ', because CANVAS_PROFILE is not set' : ''}`
+        : `CANVAS_PROFILE is "${env.CANVAS_PROFILE}", which this version can't read, so the server won't start. Pick one below.`);
+      say('');
+      for (const p of PROFILES) say(`${p.id === current?.id ? '●' : ' '} ${p.number}  ${p.id.padEnd(10)} ${String(all.filter((t) => profileIncludes(p, t)).length).padStart(3)} tools  ${p.summary}`);
+      return say('\nSwitch with: canvas-lms-mcp-remote profile <name or number>');
+    }
+    const chosen = isUnset(want) ? null : resolveProfile(want);
+    if (!chosen) fail(`"${want}" isn't a tool profile. Use one name or number: ${profileChoices()}. Nothing was changed.`);
+    const saved = chosen.id === 'full' ? isUnset(env.CANVAS_PROFILE) : String(env.CANVAS_PROFILE).trim() === chosen.id;
+    if (saved) return say(`Already using ${chosen.title} (${chosen.id}). Nothing to change.`);
+    // The name, never the number: it reads clearly in .env, and the full set is the default, so it needs no line.
+    const backup = setEnvValues(ENV_FILE, { CANVAS_PROFILE: chosen.id === 'full' ? null : chosen.id });
+    say(`Saved ${chosen.title} (${chosen.id}) in .env${backup ? ` (old file backed up to ${backup})` : ''}.`);
+    say('Restart the server so it uses it: canvas-lms-mcp-remote restart');
+    say('If you run this on more than one computer, use the same profile on each, or the tools change when another computer takes over.');
   },
 
   async cluster() {

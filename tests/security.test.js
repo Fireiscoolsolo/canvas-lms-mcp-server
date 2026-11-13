@@ -242,7 +242,7 @@ test('the public health check says it is up, and only this computer hears the ve
   const health = async (headers = {}) => (await fetch(`http://127.0.0.1:${s.port}/healthz`, { headers })).json();
   try {
     assert.equal(s.ready, true, s.output());
-    assert.deepEqual(Object.keys(await health()).sort(), ['auth_enabled', 'ok', 'tools', 'version'], 'doctor and status on this computer still see everything');
+    assert.deepEqual(Object.keys(await health()).sort(), ['auth_enabled', 'ok', 'profile', 'tools', 'version'], 'doctor and status on this computer still see everything');
     for (const through of [{ 'X-Forwarded-For': '203.0.113.5' }, { 'Cf-Connecting-Ip': '203.0.113.5' }, { Forwarded: 'for=203.0.113.5' }]) {
       const pub = await health(through);
       assert.deepEqual(Object.keys(pub).sort(), ['ok', 'tools'], JSON.stringify(through));

@@ -32,6 +32,9 @@ export function readStoredToken({ service = SERVICE, account = ACCOUNT, platform
 export function saveStoredToken(token, { service = SERVICE, account = ACCOUNT, platform = process.platform } = {}) {
   const value = String(token || '').trim();
   if (!value) throw new Error('No token to save.');
+  // The macOS command line below puts the token inside quotes. A Canvas token never has these, so one that does was
+  // copied wrong, and it must not change the command.
+  if (/["\\\r\n]/.test(value)) throw new Error('That token has a character a Canvas token never has (a quote, backslash or line break), so it wasn\'t saved. Copy it again from Canvas.');
   if (platform === 'win32') {
     run('powershell.exe', [...PS, `$ErrorActionPreference='Stop';$t=[Console]::In.ReadToEnd().Trim();${VAULT}try{$v.Remove($v.Retrieve(${q(service)},${q(account)}))}catch{};$v.Add((New-Object Windows.Security.Credentials.PasswordCredential(${q(service)},${q(account)},$t)))`], value);
   } else if (platform === 'darwin') {

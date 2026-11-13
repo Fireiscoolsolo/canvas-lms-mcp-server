@@ -8,7 +8,7 @@ Security fixes go into the newest release only, so keep every computer in your g
 | The newest release | Yes |
 | Anything older | No. Update first |
 
-It needs Node.js 18 or newer (22 or newer to read PDFs). Every change is tested on Node 18, 20, 22 and 24, on Windows and Linux.
+It needs Node.js 18 or newer (22 or newer to read PDFs). Every change is tested on Node 18, 20, 22 and 24, on Windows, macOS and Linux.
 
 ## Threat model
 
@@ -43,6 +43,7 @@ It needs Node.js 18 or newer (22 or newer to read PDFs). Every change is tested 
 | `.env.backup-*` | Older copies of `.env`, made by `rotate-password` and `totp-setup` |
 | `login-history.json` | When and from which addresses people tried to sign in |
 | `supervisor.log` | Your hostname, school site and tunnel address |
+| `changes.jsonl`, `changes.old.jsonl` | Which courses and items the server changed in Canvas, and when (`get_change_log`). IDs only, never what you wrote. `CANVAS_CHANGE_LOG=off` turns it off |
 
 All of them are listed in `.gitignore`. On Linux and macOS the server writes them so only your user can read them. On Windows, keep the settings folder inside your user profile, where other accounts can't read it. If one is ever exposed:
 1. **Canvas token:** delete it in *Canvas → Settings → Approved Integrations* and create a new one.

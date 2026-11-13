@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export default function register(ctx) {
-  const { tool, get, canvas, ok, fail, pick, fence, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, CanvasError } = ctx;
+  const { tool, get, canvas, ok, fail, pick, fence, fenceProse, html2text, assertClean, localize, ID, COURSE, LIMIT, TOKEN, DOWNLOAD_DIR, uploadFile, filePreview, assignmentPreview, SUB_FIELDS, saveDownload, omitEmpty, activeCourses, CanvasError } = ctx;
 
   const D = 'submissions';
 
@@ -26,6 +26,55 @@ export default function register(ctx) {
         attachments: (c.attachments || []).map((f) => ({ id: f.id, filename: f.filename, url: f.url })),
       }));
       return ok({ assignment_id: a.assignment_id, score: s.score, grade: s.grade, comment_count: comments.length, comments });
+    },
+  });
+
+  tool({
+    name: 'recent_feedback', group: D,
+    description: 'Grades and teacher feedback from the last few days across your courses: score, late or missing, comments and rubric notes.',
+    schema: {
+      days: z.number().int().positive().max(120).optional().describe('How many days back to look. Default 14.'),
+      course_id: COURSE.optional().describe('Only this course. Leave empty for every active course.'),
+    },
+    handler: async (a, { progress }) => {
+      const days = a.days || 14;
+      const since = new Date(Date.now() - days * 86400000);
+      const recent = (t) => Boolean(t) && new Date(t) >= since;
+      const courses = a.course_id ? [await canvas.get(`/courses/${a.course_id}`, null, { ttl: 300000 })] : await activeCourses(40);
+      // One request says which courses have new grades. A school that blocks it gets asked course by course instead.
+      let wanted = null;
+      if (!a.course_id) {
+        try {
+          const graded = (await canvas.paginate('/users/self/graded_submissions', { include: ['assignment'], only_current_enrollments: true, only_published_assignments: true }, { max: 300, ttl: 60000 })).filter((s) => recent(s.graded_at));
+          const ids = graded.map((s) => s.assignment?.course_id ?? s.course_id);
+          wanted = ids.some((id) => id === undefined || id === null) ? null : new Set(ids.map(String));
+        } catch { wanted = null; }
+      }
+      const look = courses.filter((c) => !wanted || wanted.has(String(c.id))).slice(0, 15);
+      const items = [];
+      for (const [i, c] of look.entries()) {
+        progress(i, look.length, `Reading feedback in ${c.name || c.id}`);
+        let subs;
+        try {
+          subs = await canvas.paginate(`/courses/${c.id}/students/submissions`, { student_ids: ['self'], graded_since: since.toISOString(), include: ['submission_comments', 'rubric_assessment', 'assignment'], per_page: 100 }, { max: 200, ttl: 60000 });
+        } catch { continue; }
+        for (const s of subs) {
+          if (!recent(s.graded_at)) continue;
+          const asg = s.assignment || {};
+          const criteria = new Map((asg.rubric || []).map((r) => [String(r.id), r.description]));
+          items.push(omitEmpty({
+            course: c.name, course_id: c.id, assignment: asg.name, assignment_id: s.assignment_id ?? asg.id,
+            graded: localize(s.graded_at), graded_at: s.graded_at, score: s.score, points_possible: asg.points_possible, grade: s.grade,
+            late: s.late || undefined, missing: s.missing || undefined, excused: s.excused || undefined,
+            comments: (s.submission_comments || []).slice(-5).map((m) => ({ author: m.author_name, at: localize(m.created_at), comment: fence(html2text(m.comment), `submission comment by ${m.author_name || 'unknown'}`) })),
+            rubric_notes: Object.entries(s.rubric_assessment || {}).filter(([, r]) => r?.comments).map(([id, r]) => ({ criterion: criteria.get(String(id)) || id, points: r.points, comment: fence(html2text(r.comments), 'rubric comment') })),
+          }));
+        }
+      }
+      progress(look.length, look.length);
+      items.sort((x, y) => new Date(y.graded_at) - new Date(x.graded_at));
+      const out = { days, since: localize(since.toISOString()), graded_count: items.length, with_feedback: items.filter((x) => x.comments?.length || x.rubric_notes?.length).length, courses_checked: look.length, items };
+      return ok(fenceProse(out, 'recent feedback'), items.length ? null : `No new grades or feedback in the last ${days} days.`);
     },
   });
 

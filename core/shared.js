@@ -173,7 +173,7 @@ function writeNew(folder, name, data) {
 
 // What an upload must never pick up, whoever asks: files that hold keys or sign-ins, and the folders that keep them.
 // A block list, not an allow list, because schoolwork can be anywhere: Documents, Desktop, OneDrive.
-const PRIVATE_NAMES = /^(\.env(\..*)?|\.npmrc|\.netrc|\.pgpass|\.git-credentials|oauth-store\.json(\.tmp)?|login-history\.json|supervisor-state\.json|alerts-state\.json|claude_desktop_config\.json|ngrok\.yml|id_(rsa|dsa|ecdsa|ed25519)|.+\.(pem|pfx|p12|ppk|kdbx))$/i;
+const PRIVATE_NAMES = /^(\.env(\..*)?|\.npmrc|\.netrc|\.pgpass|\.git-credentials|oauth-store\.json(\.tmp)?|login-history\.json|supervisor-state\.json|alerts-state\.json|changes(\.old)?\.jsonl|claude_desktop_config\.json|ngrok\.yml|id_(rsa|dsa|ecdsa|ed25519)|.+\.(pem|pfx|p12|ppk|kdbx))$/i;
 const PRIVATE_FOLDERS = [
   '/.ssh/', '/.aws/', '/.azure/', '/.gnupg/', '/.kube/', '/.docker/', '/.mozilla/', '/.config/google-chrome/', '/.config/chromium/',
   '/.claude/', '/.codex/', '/.cursor/', '/.gemini/', '/.codeium/', '/.lmstudio/', '/.config/claude/',
@@ -181,7 +181,26 @@ const PRIVATE_FOLDERS = [
   '/appdata/local/google/chrome/', '/appdata/local/microsoft/edge/', '/appdata/local/bravesoftware/',
   '/library/keychains/', '/library/application support/claude/', '/library/application support/code/user/',
   '/library/application support/google/chrome/', '/library/application support/firefox/', '/library/application support/microsoft edge/',
+  '/library/application support/cursor/', '/library/application support/windsurf/', '/library/application support/ngrok/',
+  '/library/application support/bravesoftware/', '/library/application support/arc/', '/library/safari/', '/library/cookies/',
+  '/.config/ngrok/', '/.config/devin/',
 ];
+
+/**
+ * A plain explanation when the system won't let this server open a file or folder, or null for any other error.
+ * macOS asks before a program may open Desktop, Documents or Downloads; if the student says no, Node only sees EPERM.
+ */
+export function explainFsError(e, target, { platform = process.platform, saving = false } = {}) {
+  if (e?.code !== 'EPERM' && e?.code !== 'EACCES') return null;
+  const where = saving ? `save into ${target}` : `open ${target}`;
+  const fix = saving
+    ? 'or pick another folder with CANVAS_DOWNLOAD_DIR. Nothing was saved.'
+    : 'or move the file to a folder the app can use. Nothing was sent.';
+  const message = platform === 'darwin'
+    ? `macOS didn't let this server ${where}. To allow it, open System Settings → Privacy & Security → Files and Folders, find your AI app and turn on that folder (Desktop, Documents or Downloads), ${fix}`
+    : `This server doesn't have permission to ${where}. Check the folder's permissions, ${fix}`;
+  return new CanvasError(message, { code: 'BLOCKED' });
+}
 
 /** Default link to a saved file for apps on the same computer: a file:// resource link. */
 export function localFileLink(abs, { name, mimeType, bytes } = {}) {
@@ -205,7 +224,7 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
   /** The folder to save into: the download folder or a folder inside it, even after following links. */
   function downloadFolder(dest) {
     const root = cfg.downloadDir;
-    fs.mkdirSync(root, { recursive: true });
+    try { fs.mkdirSync(root, { recursive: true }); } catch (e) { throw explainFsError(e, root, { saving: true }) || e; }
     const target = path.resolve(root, dest || '.');
     if (!isInside(root, target) || !isInside(realPath(root), realPath(target))) {
       throw new CanvasError(`Refused: files can only be saved in your download folder (${root}) or a folder inside it. To save somewhere else, change CANVAS_DOWNLOAD_DIR. Nothing was saved.`, { code: 'BLOCKED' });
@@ -217,7 +236,11 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
   /** A local file that may leave this computer, or a readable refusal. */
   function uploadable(filePath) {
     const abs = path.resolve(filePath);
-    if (!fs.existsSync(abs)) throw new CanvasError(`File not found on the computer running this server (${os.hostname()}): ${abs}`);
+    try {
+      fs.statSync(abs);
+    } catch (e) {
+      throw explainFsError(e, abs) || new CanvasError(`File not found on the computer running this server (${os.hostname()}): ${abs}`);
+    }
     assertNotPrivate(abs);
     return abs;
   }
@@ -225,7 +248,8 @@ export function createShared({ canvas, cfg, dates, fileLink = localFileLink, fet
   /** What a person should see before a local file leaves this computer. The hash ties a confirmation to these exact bytes. */
   function filePreview(filePath) {
     const abs = uploadable(filePath);
-    const bytes = fs.readFileSync(abs);
+    let bytes;
+    try { bytes = fs.readFileSync(abs); } catch (e) { throw explainFsError(e, abs) || e; }
     return { file_path: abs, file_size_bytes: bytes.length, file_sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
   }
 
