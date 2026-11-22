@@ -41,7 +41,7 @@ export default function register(ctx) {
 
   tool({
     name: 'list_planner_items', group: P,
-    description: 'Your Canvas To Do list (the Planner) for a date range, across every course: assignments, quizzes, discussions, pages and your own notes, with plannable IDs for mark_planner_item_done.',
+    description: 'List your Canvas To Do list (the Planner) for a date range, across every course: assignments, quizzes, discussions, pages and your own notes, sorted by due date, with the plannable IDs that mark_planner_item_done needs. Use it for a dated view of what is coming up; set incomplete_only to hide work you already finished. For only your own notes use list_planner_notes, and for work that is already late use list_missing_submissions.',
     schema: {
       start_date: z.string().optional().describe('Start of the range, YYYY-MM-DD. Default today.'),
       end_date: z.string().optional().describe('End of the range, YYYY-MM-DD. Default 14 days from now.'),
@@ -67,7 +67,7 @@ export default function register(ctx) {
 
   get({
     name: 'list_planner_notes', group: P,
-    description: 'Your own Canvas to-do notes (planner notes). Only you see these.',
+    description: 'List your own to-do notes in the Canvas planner (the ones made with create_planner_note), with each note\'s ID, title, details, to-do date and linked course. Only you can see these notes. Use it to find a note to change with update_planner_note or remove with delete_planner_note. For everything on your plate, assignments and quizzes included, use list_planner_items instead. The date filters match the note\'s to-do date; leave them out to get all your notes (up to 200).',
     path: '/planner_notes',
     schema: {
       start_date: z.string().optional().describe('Only notes on or after this date, YYYY-MM-DD.'),

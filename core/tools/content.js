@@ -204,12 +204,12 @@ export default function register(ctx) {
   get({ name: 'list_external_tools', group: J, description: 'LTI external tools available in a course (publisher platforms, proctoring, third-party apps).', path: (a) => `/courses/${a.course_id}/external_tools`, schema: { course_id: COURSE, limit: LIMIT }, paginate: true, fields: ['id', 'name', 'description', 'url', 'domain', 'workflow_state'] });
   get({ name: 'get_tool_launch_url', group: J, description: 'Get a sessionless launch URL for an LTI tool, so you can open it directly.', path: (a) => `/courses/${a.course_id}/external_tools/sessionless_launch`, schema: { course_id: COURSE, tool_id: z.string().optional(), url: z.string().optional() }, params: (a) => ({ id: a.tool_id, url: a.url }) });
   get({ name: 'list_conferences', group: J, description: 'Web conferences in a course (BigBlueButton, Zoom integrations).', path: (a) => `/courses/${a.course_id}/conferences`, schema: { course_id: COURSE }, paginate: true });
-  get({ name: 'list_collaborations', group: J, description: 'Collaborative documents in a course (Google Docs / Office integrations).', path: (a) => `/courses/${a.course_id}/collaborations`, schema: { course_id: COURSE }, paginate: true });
+  get({ name: 'list_collaborations', group: J, description: 'List the shared documents in a course, such as Google Docs or Microsoft Office collaborations your teacher or classmates set up, with each one\'s title, type and link. Read-only. Use it to find a group document; for files uploaded to the course use list_course_files, and for course wiki pages use list_pages.', path: (a) => `/courses/${a.course_id}/collaborations`, schema: { course_id: COURSE }, paginate: true });
 
   get({ name: 'list_eportfolios', group: J, description: 'Your Canvas ePortfolios (showcase sites of your work). Read-only; Canvas does not let other apps add entries, so edit them in Canvas itself.', path: '/users/self/eportfolios', schema: { include_deleted: z.boolean().optional().describe('If true, also list deleted ePortfolios.') }, params: (a) => ({ include: a.include_deleted ? ['deleted'] : undefined }), paginate: true, fields: ['id', 'name', 'public', 'workflow_state', 'created_at', 'updated_at', 'spam_status'] });
   tool({
     name: 'get_eportfolio_pages', group: J,
-    description: 'The pages of one of your ePortfolios, with their text. Read-only.',
+    description: 'Get the pages of one of your ePortfolios, with each page\'s ID, name, position, last update and its text (converted from HTML). Get the ePortfolio ID from list_eportfolios first. Read-only: Canvas does not let other apps change ePortfolios, so edit them in Canvas itself. Returns up to limit pages (default 50).',
     schema: { eportfolio_id: ID.describe('ePortfolio ID from list_eportfolios.'), limit: LIMIT },
     handler: async (a) => {
       const pages = await canvas.paginate(`/eportfolios/${a.eportfolio_id}/pages`, null, { max: a.limit || 50 });
